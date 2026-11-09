@@ -1,8 +1,5 @@
 {
   "domain": "epson_ef",
-  "categories": [
-    "media_player"
-  ],
   "name": "Epson EF Projector",
   "codeowners": [
     "@aixmoyu"

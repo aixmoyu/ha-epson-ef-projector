@@ -1,6 +1,6 @@
 """契约测试:const.py 的元组表与解包它们的消费者必须保持同构。
 
-背景:3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组(新增 options),
+背景:某次发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组(新增 options),
 但 coordinator.py 仍按 5 元组解包 —— 静态测试与单元测试都没抓到,真机
 部署后每次诊断轮询都抛 `ValueError: too many values to unpack`,整个集成
 的所有实体变成 unavailable。

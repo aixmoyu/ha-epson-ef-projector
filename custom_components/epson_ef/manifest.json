@@ -10,5 +10,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/aixmoyu/ha-epson-ef-projector/issues",
   "requirements": [],
-  "version": "3.10.0"
+  "version": "0.0.1"
 }

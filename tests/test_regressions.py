@@ -4,7 +4,7 @@
 
 1. 对焦步进语义 —— 固件在换向后首步 ±10、同向后续仅 ±1,所以"按步数
    换算"的算法到不了远距离目标;必须用 MAX/MIN + OFF 闭环定位。
-2. 升级残留实体 —— 3.5.6→3.10.0 升级后 `setting-refresh` 与
+2. 升级残留实体 —— 旧版本升级后 `setting-refresh` 与
    `button-engine_refresh` 变成永久 unavailable 的孤儿,清理表必须覆盖。
 3. 弃用 API —— `device_registry.async_get_device(identifiers=...)`
    在 HA 2027.8.0 移除。
@@ -111,7 +111,7 @@ class LegacyEntityCleanupTests(unittest.TestCase):
 
     def test_removed_entities_are_cleaned_up(self):
         legacy = self._legacy_map()
-        # 3.5.6 有、3.10.0 没有的实体
+        # 旧版本创建过、当前版本不再创建的实体
         self.assertIn("setting-refresh", legacy.get("switch", ()))
         self.assertIn("button-engine_refresh", legacy.get("button", ()))
         # 更早版本被取代的传感器

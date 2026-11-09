@@ -1,5 +1,10 @@
 # ha-epson-ef-projector
 
+[![tests](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/tests.yml/badge.svg)](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/tests.yml)
+[![hassfest](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/hassfest.yml/badge.svg)](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/hassfest.yml)
+[![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
 爱普生 EF 系列投影仪没有 PJLink，没有 ESC/VP21，也没有可用的网页管理界面。它直接使用投影仪固件自带的一个 HTTP 控制接口，把这台设备完整接进了 Home Assistant。
 
 整个过程只发生在局域网内。不需要厂商云服务，不需要在投影仪上开启 USB 调试或网络调试，不需要 ADB，也不依赖任何会随固件升级而失效的临时手段。

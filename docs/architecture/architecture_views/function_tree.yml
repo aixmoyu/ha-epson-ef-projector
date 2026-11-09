@@ -1,0 +1,1365 @@
+# ════════════════════════════════════════════════════════════════════════════
+# 全局功能树 — ha-epson-ef-projector
+# project: "ha-epson-ef-projector"
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+#
+# 本文件是 5 个模块 function_tree.yml 的**业务视角合并结果**：
+#   entry-core / pjctl-transport / state-coordinator / entity-platforms /
+#   verification-harness
+#
+# 与模块树的差异（仅两点）：
+#   1. 节点按「业务能力域」重组，不按模块目录重组；
+#   2. 每个 `type: function` 节点额外携带 `module_refs`（参与实现的模块列表）。
+#
+# 业务去重依据（每条均给出合并理由；不确定者保留独立并标 [待确认]）：
+#   · 合并 M1「判定投影仪电源状态」：pjctl-transport 的 `probe_state`（api.py:221-276）
+#     与 state-coordinator 的每轮探测（coordinator.py:42-56）是同一业务能力的
+#     实现与编排两段，调用关系为 coordinator → api，不可分割 → 合并。
+#   · 合并 M2「定位对焦马达至目标位置」：pjctl-transport 的 `goto_focus`
+#     （api.py:544-584）与 entity-platforms 的 `Ef50FocusNumber`（number.py:282-301）
+#     是同一业务能力的算法层与入口层 → 合并。
+#   · 合并 M3「注入遥控按键」：entity-platforms 的 30 个按钮（button.py:17-83）与
+#     media_player 的媒体键（media_player.py:201-228）、entry-core 的 `send_key`
+#     服务（services.py:43-54）三者共用 `NOTIFY_KEYEVENT` 通路（api.py:327-328），
+#     属于同一业务能力的不同入口 → 合并，入口差异降级为 function_point。
+#   · 合并 M4「暴露投影仪诊断读数」：state-coordinator 的慢诊断段（coordinator.py:59-132）、
+#     entity-platforms 的 sensor/media_player 属性（sensor.py:67-121、
+#     media_player.py:109-136）、entry-core 的 diagnostics（diagnostics.py:12-39）
+#     是同一条「采集 → 投影 → 导出」链 → 合并。
+#   · 不合并 N1「验证协议语义」与「判定投影仪电源状态」：前者是测试设施
+#     （tests/test_api.py:165-216），后者是生产实现；语义相邻但职责不同
+#     （一方断言一方执行），合并会让「系统能做什么」失真 → 保持独立。
+#   · 不合并 N2「切换静音状态」与「调节音量」：静音是盲 toggle + 本地记忆
+#     （media_player.py:207-216），音量是无状态按键注入（:201-205），
+#     状态模型完全不同 → 保持独立。
+#
+# 校验: node .agents/skills/aet-project-analysis2/scripts/validate-function-tree.mjs \
+#         docs/architecture/architecture_views/function_tree.yml
+# ════════════════════════════════════════════════════════════════════════════
+- id: '1'
+  type: directory
+  name: 固件通信
+  description: 与投影仪固件 WebApiSrv（8080/pjctl）的一切交互——认证握手、命令收发、失败语义分类、以及电源状态判定。这是全系统唯一的设备 I/O 边界，上层全部通过它间接访问设备。
+  children:
+  - id: '10'
+    type: function
+    name: 建立摘要认证会话
+    description: 用固件内置凭据完成 HTTP Digest 挑战-应答，并缓存 nonce 以省去每条命令的 401 往返；nonce 失效时清缓存并单次重试。
+    module_refs: ["pjctl-transport"]
+    depends_on: []
+    node_context:
+      keywords: ["digest_auth", "nonce_cache", "challenge_retry"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:99-145"
+        - "custom_components/epson_ef/api.py:180-216"
+    children:
+    - id: '1001'
+      type: function_point
+      name: 解析并缓存认证挑战
+      description: 从 401 响应的 WWW-Authenticate 提取 nonce/realm/qop，缓存为三元组并把 nonce 计数归零。
+      spec: 缺少 nonce 视为畸形挑战，直接失败（`api.py:101-103`）。
+      constraint: 凭据为固件固定常量，不可轮换（`const.py:15-19`）。
+      input: "`WWW-Authenticate` 响应头"
+      process: 正则提取三要素 → 缓存
+      output: "`(nonce, realm, qop)`"
+    - id: '1002'
+      type: function_point
+      name: 递增计数并生成摘要头
+      description: 同步递增 nonce-count 后计算 MD5 摘要，保证并发协程不会复用同一个 nc。
+      spec: "`nc` 自增在构造头之前同步完成（`api.py:125`），格式化为 8 位十六进制。"
+      input: 方法 + URI
+      process: ha1/ha2/response 三层 MD5
+      output: "`Authorization: Digest ...`"
+    - id: '1003'
+      type: function_point
+      name: 失效后重建认证
+      description: 命令超时或网络异常时清除缓存，下次请求重新走 401 挑战；401 时最多刷新重试一次。
+      spec: "`_clear_auth()` 于超时/网络错（`api.py:207-214`）；401 且首次尝试时 `_update_auth` 后 `continue`（`:200-204`）。"
+      constraint: 单次 401 重试上限，超出即抛 `EpsonApiError("digest authentication failed")`（`api.py:216`）。
+      input: 失败响应 / 异常
+      process: 清缓存 → 重取挑战
+      output: 新的认证三元组
+    - id: '1011'
+      type: function_constraint
+      name: 单次 401 重试上限
+      description: 一条命令最多经历一次 nonce 刷新；第二次 401 直接失败，避免认证风暴（`api.py:180-216`）。
+    - id: '1012'
+      type: function_spec
+      name: 端点与凭据由固件固定
+      description: URL 由 `http://{host}:{port}/api/pjctl` 拼成（`api.py:79`），端口默认 8080（`const.py:10`），凭据与 realm 为常量（`const.py:15-19`）——没有任何用户可配置项。
+  - id: '11'
+    type: function
+    name: 收发原生命令
+    description: 把命令 id 与参数串封装成 pjctl 请求体发出，并把结果归一化为四类失败语义；读命令失败降级为 None，写命令失败必须上抛。
+    module_refs: ["pjctl-transport"]
+    depends_on: ["10"]
+    node_context:
+      keywords: ["pjctl_request", "token_count_size", "error_classification"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:147-216"
+        - "custom_components/epson_ef/api.py:40-61"
+    children:
+    - id: '1101'
+      type: function_point
+      name: 按分词数封装请求体
+      description: size 字段等于 params 的单空格分词数（而非字节长度），params 缺省时 size=0 且不写该键。
+      spec: 唯一计算点 `api.py:171`；真机证据见 `api.py:163-170`（三组对照样例）。
+      constraint: 写命令的 size 不匹配会被 MCU 直接拒绝（历史根因）。
+      input: "`cmd_id`, `params`"
+      process: "`len(params.split(\" \"))`"
+      output: pjctl JSON 请求体
+    - id: '1102'
+      type: function_point
+      name: 区分四类失败语义
+      description: 网络不可达、命令 FAIL、超时、通用错误分成四个异常类，供上层区分「断电」「待机」「卡住」。
+      spec: "`EpsonApiUnavailable`/`EpsonApiCommandFailed`/`EpsonApiTimeout`/`EpsonApiError`（`api.py:40-61`）。"
+      constraint: `Timeout` 是 `Error` 的子类，捕获顺序敏感。
+      input: 失败响应
+      process: 按 HTTP 状态 / resultCode / 异常类型归类
+      output: 四类异常之一
+    - id: '1103'
+      type: function_point
+      name: 覆盖单次请求超时
+      description: 默认 10s，允许调用方为「可能挂住的探测」传入更短超时。
+      spec: "`total = timeout if timeout is not None else 10.0`（`api.py:160`）；引擎探针用 5.0（`:255-257`）。"
+      input: "`timeout: float | None`"
+      process: 内联构造 ClientTimeout
+      output: 单次请求超时
+    - id: '1111'
+      type: function_constraint
+      name: 端点与传输明文
+      description: 全链路 HTTP 明文 + Digest MD5，无 TLS、无 IP 白名单（`api.py:79`）——这是部署侧必须靠网络隔离的全部原因。
+    - id: '1112'
+      type: function_spec
+      name: 请求-响应单次往返模型
+      description: 无长连接订阅、无推送、无回调；每次交互都是一次 POST 往返（`manifest.json:10` `local_polling`）。
+  - id: '12'
+    type: function
+    name: 判定投影仪电源状态
+    description: 用「先证活、后判态」的两级探针识别开机/待机，并把各种待机形态（FAIL / 超时 / 断连）统一判为关闭；不可达必须显式失败而不是被当成待机。（合并 M1：pjctl-transport 实现 + state-coordinator 每轮调用）
+    module_refs: ["pjctl-transport", "state-coordinator"]
+    depends_on: ["11"]
+    node_context:
+      keywords: ["power_state", "liveness_probe", "standby_detection"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:221-276"
+        - "custom_components/epson_ef/coordinator.py:42-56"
+    children:
+    - id: '1201'
+      type: function_point
+      name: 双重探针识别待机形态
+      description: 第一条产品名命令（任何电源态都能秒回）证明设备在线；第二条灯光时长命令成功即开机，FAIL/超时/断连均判待机。
+      spec: 探针顺序不可交换——先证活才能把「引擎查询失败」解读为待机（`api.py:236-264`）。
+      constraint: 深层待机下引擎查询可能挂住 5s，必须用短超时（`api.py:255-257`）。
+      input: 设备端点
+      process: 产品名 → 灯光时长 → 归类
+      output: "`(\"on\", (hours, extra))` 或 `(\"off\", None)`"
+    - id: '1202'
+      type: function_point
+      name: 归一化不可达与命令失败
+      description: 存活阶段的超时被升级为「不可达」；存活之后引擎查询的任何失败被降级为「待机」。归一化是单向的。
+      spec: "升级 `api.py:240-246`；降级 `:258-264`。"
+      constraint: 方向不可逆——禁止把待机失败升级为不可达（会让关机显示成故障）。
+      input: 探针异常
+      process: 按阶段重分类
+      output: "`on` / `off` / `EpsonApiUnavailable`"
+    - id: '1203'
+      type: function_point
+      name: 限时确认目标状态
+      description: 电源动作后以 1s 间隔轮询直到匹配目标态或预算耗尽，返回是否确认。
+      spec: 预算 10s（`media_player.py:27`、`api.py:278-293`）；因每轮先探测再判 deadline，实际可超期到约 25s。
+      constraint: 是软预算而非硬上限（详见 risk.md R-05 类条目）。
+      input: 目标状态 + 预算
+      process: 循环探测
+      output: "`bool` 是否确认"
+  - id: '13'
+    type: directory
+    name: 设备能力封装
+    description: 按固件命令族把原始命令封装成语义化方法——读类降级、写类上抛，并对危险参数变体「不实现」。
+    children:
+    - id: '131'
+      type: function
+      name: 查询设备读数
+      description: 读取序列号、产品名、灯时、测距、对焦位置/行程、自动对焦状态等只读信息；任何失败返回 None（唯一例外是灯时——待机抛异常以区分「0 小时」与「读不到」）。
+      module_refs: ["pjctl-transport"]
+      depends_on: ["11"]
+      node_context:
+        keywords: ["read_helpers", "read_degrades_none", "subindex"]
+        code_mapping:
+          - "custom_components/epson_ef/api.py:295-361"
+          - "custom_components/epson_ef/api.py:466-514"
+          - "custom_components/epson_ef/api.py:634-656"
+      children:
+      - id: '13101'
+        type: function_point
+        name: 读取设备身份
+        description: 产品名用于可达性判定与型号展示；序列号用 `CONFIG_GET_PJ_SNO` 的子索引 `"1"` 读取，无参数时固件返回空串。
+        spec: "`api.py:295-315`；序列号成为 base_id 的来源（`__init__.py:58-66`）。"
+        input: 无
+        process: 单次读命令
+        output: "`str | None`"
+      - id: '13102'
+        type: function_point
+        name: 读取光源与投射读数
+        description: 灯时（小时 + 附加字段）、光源亮度、投射距离（毫米）。
+        spec: "`get_light_time` 待机抛 `EpsonApiCommandFailed`（`api.py:330-338`）；其余走 `get_raw` 返回 None。"
+        input: 无
+        process: 读命令 + 字符串解析
+        output: int / float / None
+      - id: '13103'
+        type: function_point
+        name: 读取对焦与自动对焦读数
+        description: 对焦位置 `POS`、行程 `RANGE`、自动对焦状态 `"0"` 与目标位置 `"1"`。
+        spec: 必须带子命令参数；无参数查询会挂住固件（`api.py:490-514`、`:634-656` 注释）。
+        input: 子命令
+        process: 读命令 + 三/两 token 解析
+        output: int / tuple / None
+      - id: '13111'
+        type: function_constraint
+        name: 读失败一律降级为 None
+        description: 读类辅助方法吞掉所有 `EpsonApiError` 返回 None，表示「当前电源态下不可用」而非「值为空」——这正是上层 carry-forward 的判定依据（`api.py:340-351`、`coordinator.py:145-153`）。
+      - id: '13112'
+        type: function_spec
+        name: 语义化命名与子索引固化
+        description: 命令 id 与子索引写进方法内联常量而非调用处，使调用方不接触固件字符串（如 `set_ambient_light` 的 `"3 <01> 48"`，`api.py:387-398`）。
+    - id: '132'
+      type: function
+      name: 写入设备设置
+      description: 下发按键、启动模式、可写设置、氛围灯与测试图案等写命令；写失败必须上抛（与读类相反），危险参数变体一律不实现。
+      module_refs: ["pjctl-transport"]
+      depends_on: ["11"]
+      node_context:
+        keywords: ["write_helpers", "write_throws", "dangerous_variants"]
+        code_mapping:
+          - "custom_components/epson_ef/api.py:317-338"
+          - "custom_components/epson_ef/api.py:376-430"
+          - "custom_components/epson_ef/api.py:449-488"
+          - "custom_components/epson_ef/api.py:623-632"
+      children:
+      - id: '13201'
+        type: function_point
+        name: 下发按键与模式写入
+        description: 按键走 `NOTIFY_KEYEVENT`，启动模式走 `CONFIG_SET_PJ_STANDBY_MODE`，刷新定时器走 `"0 <小时>"`。
+        spec: "`api.py:317-338`、`:481-488`。"
+        input: keycode / 原始值 / 小时数
+        process: 单次写命令
+        output: 无返回（失败抛错）
+      - id: '13202'
+        type: function_point
+        name: 写入无读通路设置
+        description: 氛围灯开关/亮度/模式、自动对比度、测试图案——只写不读，故上层以乐观状态呈现。
+        spec: "`api.py:387-430`、`:623-632`；换算常量 `const.py:155-163`。"
+        input: UI 值
+        process: UI → 固件值换算后写
+        output: 无返回（失败抛错）
+      - id: '13203'
+        type: function_point
+        name: 收敛危险写入面
+        description: 三种危险变体「不实现」：`SET_REFRESH "1"`（立即刷新并关机）、氛围灯 `"255"`（清用户光效配置）、光效槽 11（小程序临时预览）。
+        spec: "`api.py:481-488` 显式警示；`const.py:144-150`；`api.py:411-418` 只允许槽 3–6。"
+        constraint: 该约定只能约束语义方法；`request()` 与服务 `raw_request` 仍可绕过（见 risk.md R-23）。
+        input: 无
+        process: 不实现
+        output: 无
+      - id: '13211'
+        type: function_constraint
+        name: 写失败必须上抛
+        description: 写方法不吞异常，交由实体转成用户可见错误并保持本地值不变（`api.py:324-325` vs 读类 `:298-299` 的不对称契约）。
+    - id: '133'
+      type: function
+      name: 调整画面几何
+      description: 通过 `CONFIG_SET_QC` 的子命令做变焦步进、位移步进与一键重置；步进量为固件实测值。
+      module_refs: ["pjctl-transport", "entity-platforms"]
+      depends_on: ["132"]
+      node_context:
+        keywords: ["geometry", "qc_subcommand", "zoom_shift_reset"]
+        code_mapping:
+          - "custom_components/epson_ef/api.py:590-618"
+          - "custom_components/epson_ef/button.py:65-82"
+          - "custom_components/epson_ef/const.py:165-177"
+      children:
+      - id: '13301'
+        type: function_point
+        name: 步进变焦
+        description: 首 token `1` + `±104`，正值放大（四角外扩）。
+        spec: "`api.py:590-598`；常量 `QC_ZOOM_STEP = 104`（`const.py:176`）。"
+        input: 方向
+        process: 单次写
+        output: 无返回
+      - id: '13302'
+        type: function_point
+        name: 步进位移
+        description: 首 token `2` + `dx*13 dy*13`（+x 右 / +y 下）。
+        spec: "`api.py:600-608`；常量 `QC_SHIFT_STEP = 13`（`const.py:177`）。"
+        input: dx / dy
+        process: 单次写
+        output: 无返回
+      - id: '13303'
+        type: function_point
+        name: 重置几何校正
+        description: 子命令 `"5"` 清除缩放/位移/角点/梯形状态，等价机身菜单「重置校正」。
+        spec: "`api.py:610-618`。"
+        constraint: 会清掉用户既有校正，需自动校正重建（`button.py:80-82` 注释）。
+        input: 无
+        process: 单次写
+        output: 无返回
+    - id: '134'
+      type: function
+      name: 定位对焦马达至目标位置
+      description: 固件没有「设置到 X」命令，故用 MAX/MIN 连续移动 + 按剩余距离定时 + OFF + 回读 POS 的闭环逼近目标，容差 3、最多 14 轮。（合并 M2：传输层算法 + number 实体入口）
+      module_refs: ["pjctl-transport", "entity-platforms"]
+      depends_on: ["131", "132"]
+      node_context:
+        keywords: ["focus_positioning", "closed_loop", "motor_safety"]
+        code_mapping:
+          - "custom_components/epson_ef/api.py:516-584"
+          - "custom_components/epson_ef/number.py:282-301"
+          - "custom_components/epson_ef/const.py:105-133"
+      children:
+      - id: '13401'
+        type: function_point
+        name: 按剩余距离估算脉冲
+        description: 脉冲时长 = 剩余距离 / 65.0（实测连续移动速度），并 clamp 到 0.10–2.0s。
+        spec: "`api.py:568-571`；速度常量 `const.py:123-124`。"
+        constraint: 速度随负载/机型变化，换机型必须重测。
+        input: 目标与当前 POS
+        process: 差值换算时长
+        output: 秒数
+      - id: '13402'
+        type: function_point
+        name: 保证脉冲后停止马达
+        description: 无论 sleep 是否被取消，都发 `OFF` 停止连续移动，避免马达空转到限位。
+        spec: "`try/finally` 保证（`api.py:573-582`）。"
+        constraint: ⚠️ finally 内 `await` 未 `asyncio.shield`，二次取消仍可能跳过（risk.md R-03）。
+        input: 已启动的移动
+        process: 强制 OFF
+        output: 马达停止
+      - id: '13403'
+        type: function_point
+        name: 闭环收敛判定
+        description: 每轮回读 POS，|剩余| ≤ 3 即认为到位；预算耗尽后返回最后一次实测位置。
+        spec: "`api.py:561-567`, `:584`；容差 `const.py:129`。"
+        constraint: 返回值只是 int，未携带「是否收敛」标志——上层无法区分「到位」与「尽力而为」。
+        input: 目标值
+        process: 回读比较
+        output: 最终位置 int / None
+      - id: '13404'
+        type: function_point
+        name: 位置回写设置缓存
+        description: 定位结果写回 `settings["focus_position"]` 并请求刷新，否则 UI 会回弹到旧位置（该键仅慢轮更新）。
+        spec: "`number.py:297-301`；慢轮更新点 `coordinator.py:113-115`。"
+        input: 最终位置
+        process: 写缓存 + refresh
+        output: 实体状态更新
+      - id: '13411'
+        type: function_constraint
+        name: 固件无绝对定位命令
+        description: 只能靠 INC/DEC（非线性步长）或 MIN/MAX 连续移动——INC/DEC 换向后首步 ±10、同向后续 ±1，故「按步数换算」永远到不了远距离目标（`const.py:108-118` 真机记录）。
+      - id: '13412'
+        type: function_constraint
+        name: 需唤醒且无并发保护
+        description: POS 只有唤醒时可读；且 goto_focus 与实体 setter 均无锁，并发定位会交错 MAX/MIN/OFF（risk.md R-02）。
+  - id: '2'
+    type: directory
+    name: 集成生命周期与配置
+    description: 把一条 HA config entry 变成可运行集成，并维护其身份、配置与注册表的一致性——setup/unload、身份解析与迁移、三条配置流。
+    children:
+    - id: '21'
+      type: function
+      name: 装配集成运行时
+      description: 按固定顺序构造传输客户端、解析身份、修复注册表、建协调器并首刷、发布共享上下文、转发 7 个平台、注册服务与更新监听；任一步失败都必须归还已获得的资源。
+      module_refs: ["entry-core"]
+      depends_on: ["12", "31"]
+      node_context:
+        keywords: ["setup_entry", "assembly_order", "rollback", "platform_forward"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:166-206"
+          - "custom_components/epson_ef/__init__.py:24-27"
+      children:
+      - id: '2101'
+        type: function_point
+        name: 解析连接参数与轮询间隔
+        description: port 缺省 8080；轮询间隔按「options 优先 → data → 默认 15s」三级回退。
+        spec: "`__init__.py:184-187`；默认值 `const.py:11`。"
+        input: ConfigEntry
+        process: 三级 get 链
+        output: "`(host, port, poll_interval)`"
+      - id: '2102'
+        type: function_point
+        name: 首刷协调器并拒绝半成品上线
+        description: 用解析出的间隔建协调器并强制首刷；失败时先关会话再抛 ConfigEntryNotReady，不发布 hass.data、不转发平台。
+        spec: "`__init__.py:188-193`——这是唯一可达的 ConfigEntryNotReady 触发路径。"
+        constraint: 首刷会触发一轮完整慢诊断（`_poll_count == 1`），故 setup 可能耗时数秒到分钟级。
+        input: api + interval
+        process: 构造 → 首刷 → 失败关会话
+        output: 已刷过一轮的协调器
+      - id: '2103'
+        type: function_point
+        name: 发布共享运行时上下文
+        description: 把 api/coordinator/product/base_id/serial 按 entry_id 挂到 `hass.data[DOMAIN]`，成为 7 个平台、服务、诊断共用的唯一入口。
+        spec: "`__init__.py:195-201`；读取方 9 处（如 `binary_sensor.py:23`、`services.py:17`、`diagnostics.py:16`）。"
+        constraint: 字典无类型契约，键名靠约定。
+        input: 装配局部对象
+        process: 组装 dict
+        output: "`hass.data[DOMAIN][entry_id]`"
+      - id: '2104'
+        type: function_point
+        name: 转发平台并注册更新监听
+        description: 一次性转发 7 个平台，注册「条目变更即整条 reload」的监听。
+        spec: "`PLATFORMS` 7 项（`__init__.py:24-27`）；监听器只做 `async_reload`（`:209-210`）。"
+        input: 已发布的 hass.data
+        process: forward → register services → add listener
+        output: 58 实体 + 2 服务 + 监听
+      - id: '2111'
+        type: function_spec
+        name: 装配顺序即契约
+        description: 身份解析必须早于注册表迁移与遗留清理，后者必须早于平台转发——否则平台会用新身份创建第二套实体而不是沿用旧实体（`__init__.py:178` → `:180` → `:181` → `:203`）。
+      - id: '2112'
+        type: function_constraint
+        name: 失败即归还传输资源
+        description: 已构造的 EpsonApi 必须在每条失败出口 `close()`；现状只覆盖两条出口（`__init__.py:175`、`:192`），身份解析/迁移/清理/平台转发失败均未关闭（模块 risk RISK-EC-04）。
+    - id: '22'
+      type: function
+      name: 释放集成运行时
+      description: 卸载 7 个平台，成功后弹掉共享上下文并关闭传输会话；仅当这是最后一个条目时摘除 DOMAIN 并注销两个服务。
+      module_refs: ["entry-core"]
+      depends_on: ["21"]
+      node_context:
+        keywords: ["unload_entry", "teardown", "service_unregister"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:213-221"
+          - "custom_components/epson_ef/services.py:97-102"
+      children:
+      - id: '2201'
+        type: function_point
+        name: 卸载平台并判定成败
+        description: 以平台卸载返回值为唯一成功判据；失败时保留共享上下文，避免半卸载。
+        spec: "`__init__.py:214-215`。"
+        input: ConfigEntry
+        process: 批量卸载
+        output: "`bool unload_ok`"
+      - id: '2202'
+        type: function_point
+        name: 关闭传输会话
+        description: 从共享字典弹出条目运行时并关闭 API 会话，防止迟到协程继续使用已卸载条目。
+        spec: "`__init__.py:216-217`（直接下标，无 KeyError 保护）。"
+        input: 已加载条目
+        process: pop → close
+        output: 会话关闭
+      - id: '2203'
+        type: function_point
+        name: 末条目注销全局服务
+        description: 服务是 domain 级资源，按「条目计数归零」而非单次 unload 注销。
+        spec: "`__init__.py:218-220`；注销遍历两个服务名（`services.py:100-102`）。"
+        input: 卸载后的 hass.data
+        process: 判空 → 摘 DOMAIN → 注销
+        output: 服务移除
+    - id: '23'
+      type: function
+      name: 解析并治理设备身份
+      description: 序列号优先、地址兜底地确定「这台投影仪是谁」，持久化到 HA Store（不写 config entry 以避免自触发 reload），并在身份变化时批量迁移实体与设备注册表、清除被取代的遗留实体。
+      module_refs: ["entry-core"]
+      depends_on: ["131"]
+      node_context:
+        keywords: ["identity", "serial_number", "store", "registry_migration", "legacy_cleanup"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:42-163"
+      children:
+      - id: '2301'
+        type: function_point
+        name: 序列号优先解析
+        description: 先查 Store 缓存的序列号，未命中才向固件查询；命中即作为 base_id 并长期不复核。
+        spec: "`__init__.py:58-66`；固件侧 `api.py:302-315`。"
+        constraint: 换机/换主板后序列号变化无校验，Store 命中即永不复核。
+        input: Store + 在线设备
+        process: 缓存 → 远程
+        output: "`serial: str | None`"
+      - id: '2302'
+        type: function_point
+        name: 地址兜底钉死身份
+        description: 序列号不可得（典型是待机）时把首次见到的 host:port 钉成永久身份，此后换址不改身份。
+        spec: "`__init__.py:68-76`；钉死不可撤销。"
+        input: host / port / Store
+        process: 命中即返回，否则写当前地址
+        output: base_id（地址形态）
+      - id: '2303'
+        type: function_point
+        name: 身份持久化到 Store
+        description: 用 `Store(hass, 1, "epson_ef.<entry_id>.identity")` 保存身份，理由是写 config entry 会触发自身 reload。
+        spec: "`__init__.py:48-55`——理由写在注释里。"
+        input: 解析结果
+        process: async_load → 变更 → async_save
+        output: `.storage/epson_ef.<entry_id>.identity`
+      - id: '2304'
+        type: function_point
+        name: 迁移注册表身份
+        description: 身份从旧地址变到序列号时，改写实体 unique_id 前缀与设备 identifier；冲突降级为 warning 而非中断 setup。
+        spec: "`__init__.py:79-120`；幂等靠 `old_id == new_id` 短路（`:83-84`）。"
+        constraint: 只认调用方传入的当前 host:port 作旧身份，历史更早地址不会被匹配（模块 risk RISK-EC-12）。
+        input: 新旧身份
+        process: 前缀替换 + identifiers 替换
+        output: 注册表指向新身份
+      - id: '2305'
+        type: function_point
+        name: 清理被取代的遗留实体
+        description: 按「平台 × 后缀」声明表删除新版本不再创建的实体，避免升级用户永久看到 unavailable 孤儿。
+        spec: "`__init__.py:123-163`；清理表 `:146-150`；双前缀匹配 `:151-155`。"
+        constraint: 表是手工枚举，新增/删除实体必须同步；删除不可逆。
+        input: 注册表
+        process: 遍历条目 → 集合判定 → remove
+        output: 孤儿实体被移除
+      - id: '2311'
+        type: function_constraint
+        name: 身份与地址解耦
+        description: base_id 一旦落到序列号就与 host/port 无关；地址只作为「序列号暂不可得」的临时兜底（`__init__.py:42-76`）。
+    - id: '24'
+      type: function
+      name: 迁移配置条目版本
+      description: 把 ADB 时代的 v1 条目原地改写成原生 API 的 v2 条目——强制 8080 端口、清除相机开关、写回 version=2。
+      module_refs: ["entry-core"]
+      depends_on: ["21"]
+      node_context:
+        keywords: ["config_entry_migration", "v1_to_v2", "idempotent"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:31-39"
+          - "custom_components/epson_ef/config_flow.py:26"
+      children:
+      - id: '2401'
+        type: function_point
+        name: 重写端口并清除 ADB 字段
+        description: 无条件写入 port=8080（丢弃 v1 自定义端口），并删除 `enable_camera`。
+        spec: "`__init__.py:33-37`。"
+        input: v1 data 副本
+        process: 覆盖 + pop
+        output: v2 data
+      - id: '2402'
+        type: function_point
+        name: 写回版本号
+        description: 用 `async_update_entry(data=..., version=2)` 一次性推进版本，靠持久化保证下次不再进入迁移分支。
+        spec: "`__init__.py:37-38`。"
+        input: 整形后 data
+        process: update_entry
+        output: version=2
+      - id: '2411'
+        type: function_constraint
+        name: 迁移幂等靠门禁
+        description: 幂等性由 `entry.version == 1` 门禁 + 写回 version=2 保证，无需标记位（`__init__.py:33`, `:39`）。
+      - id: '2412'
+        type: function_constraint
+        name: 未知版本不得静默放行
+        description: ⚠️ 现状违例：函数对 v3+ 也返回 True（无 else 分支），会把未来版本当「已迁移」放行。
+    - id: '25'
+      type: function
+      name: 配置连接与轮询
+      description: 三条用户可见配置流——首次添加（探测连通性后以 host:port 建条目）、地址重配置（DHCP 漂移，只改连接信息）、选项（只改轮询间隔）。
+      module_refs: ["entry-core"]
+      depends_on: ["21", "23"]
+      node_context:
+        keywords: ["config_flow", "reconfigure", "options", "connectivity_probe"]
+        code_mapping:
+          - "custom_components/epson_ef/config_flow.py:35-132"
+      children:
+      - id: '2501'
+        type: function_point
+        name: 添加前连通性探测
+        description: 用产品名命令判定「能不能连上」，无论成败都关闭临时客户端；失败回显 cannot_connect。
+        spec: "`config_flow.py:38-54`。"
+        constraint: 只看是否返回非空产品名，不校验机型与固件能力。
+        input: 表单 host/port
+        process: 临时客户端 → 产品名 → close
+        output: "`product: str | None`"
+      - id: '2502'
+        type: function_point
+        name: 地址重配置
+        description: 承接既有条目、改 host/port 后交还 update listener 触发 reload，不自调 reload。
+        spec: "`config_flow.py:68-105`；reload 由 `__init__.py:209-210` 执行。"
+        constraint: 不改 entry unique_id（仍是旧 host:port），两套身份源并存（risk.md R-16）。
+        input: reconfigure entry
+        process: 探测 → update_and_abort
+        output: data 更新 + reload
+      - id: '2503'
+        type: function_point
+        name: 调整轮询间隔
+        description: options 流只承载 poll_interval，默认值回显「生效值」（options 优先、data 兜底），提交后 reload 生效。
+        spec: "`config_flow.py:108-132`；范围 5–300 秒。"
+        constraint: 回显逻辑与 setup 取值逻辑是两处独立实现，必须同步。
+        input: 用户输入
+        process: create_entry
+        output: options 更新
+      - id: '2511'
+        type: function_constraint
+        name: 仅手动添加
+        description: 全仓无 zeroconf/dhcp/import/reauth 入口，设备不会被自动发现，IP 必须手工填写并当场探测通过。
+  - id: '3'
+    type: directory
+    name: 状态同步
+    description: 以单一轮询源把设备状态同步到 HA：快/慢双速节奏、快照装配与结转，以及驱动全部实体的声明式契约表。
+    children:
+    - id: '31'
+      type: function
+      name: 轮询并装配状态快照
+      description: 每轮探测电源态、每 12 轮追加慢诊断；把读数装进一个字典，读失败时省略键并在周期末结转上一轮值。
+      module_refs: ["state-coordinator"]
+      depends_on: ["12", "32"]
+      node_context:
+        keywords: ["polling", "dual_speed", "carry_forward", "snapshot"]
+        code_mapping:
+          - "custom_components/epson_ef/coordinator.py:37-154"
+          - "custom_components/epson_ef/const.py:222"
+      children:
+      - id: '3101'
+        type: function_point
+        name: 快慢双速节流
+        description: 每轮 2 条 HTTP（探电源 + 灯时）；每 12 轮追加约 33 条只读命令；稳态平均约 4.75 条/轮。
+        spec: "`coordinator.py:59`；`DIAGNOSTIC_EVERY_N_POLLS = 12`（`const.py:222`）。"
+        constraint: 慢轮最坏 ≈330–355s 远超默认 15s 间隔，且无整轮超时预算（risk.md R-09）。
+        input: 定时器
+        process: 计数判定 → 分支
+        output: 快/慢轮数据
+      - id: '3102'
+        type: function_point
+        name: 待机时跳过只读探测
+        description: 慢诊断段整体落在 `state == "on"` 门控内，待机时只读启动模式一条，`settings`/`diag` 整段不刷新。
+        spec: "`coordinator.py:61` 块内 32 条、块外 1 条（`:130`）。"
+        constraint: 关机期间乐观值可持续偏离真值（他人用遥控器改过设置时不可见）。
+        input: 电源态
+        process: 条件执行
+        output: 部分数据
+      - id: '3103'
+        type: function_point
+        name: 结转上一轮旧值
+        description: 读失败时不写 None 而是省略键，周期末用旧值补齐；六组键各有结转规则，唯独电源态不结转。
+        spec: "`coordinator.py:134-153`；电源态不结转理由见 `:51`（盲 toggle 依赖新值）。"
+        input: 本轮部分数据 + 上轮快照
+        process: 缺失键回填
+        output: 完整快照
+      - id: '3104'
+        type: function_point
+        name: 暴露陈旧性标记
+        description: 结转值必须同时暴露「何时真正测到」，否则等于用旧值伪装新值。
+        spec: "`light_measured_at` ISO 串（`coordinator.py:54-56`）；`stale` 属性（`sensor.py:75-83`、`:118-119`）。"
+        constraint: 目前只有两个 sensor 有 stale 标记，13 个读 settings 的实体没有（模块 risk R-SC-03）。
+        input: 快照
+        process: 时间戳 / 布尔
+        output: 可判旧的读数
+      - id: '3111'
+        type: function_spec
+        name: 快照键契约
+        description: 键集合固定为 `state`/`light_hours`/`light_extra`/`light_measured_at`/`settings`/`diag`/`product`/`standby_mode`，是全系统事实上的层间接口（无类型定义）。
+      - id: '3112'
+        type: function_constraint
+        name: 读失败不得写入空值
+        description: `get_raw` 的 None 语义是「该电源态下不可用」，写进快照会破坏结转并让实体打成 unknown。
+    - id: '32'
+      type: function
+      name: 声明可写设置与值域契约
+      description: 用声明式元组表集中定义可写开关/多档选项，以及亮度、定时器、对焦、氛围灯、几何、增益的取值域与换算参数；表宽度由 AST 测试锁死。
+      module_refs: ["state-coordinator"]
+      depends_on: []
+      node_context:
+        keywords: ["declarative_tables", "value_domains", "width_contract", "const"]
+        code_mapping:
+          - "custom_components/epson_ef/const.py:48-192"
+          - "tests/test_const_contract.py:25-145"
+      children:
+      - id: '3201'
+        type: function_point
+        name: 声明零一开关与多档选项表
+        description: `WRITABLE_SWITCHES`(6×4) 与 `WRITABLE_SELECTS`(4×6) 一处声明、多处解包（装配 + 轮询回读）。
+        spec: "`const.py:53-92`；解包点 `switch.py:38`、`select.py:40`、`coordinator.py:92`、`:97`。"
+        constraint: 表宽度与解包宽度必须一致，否则整集成 unavailable（历史事故，`tests/test_const_contract.py:1-15`）。
+        input: 无
+        process: 元组表
+        output: 装配源
+      - id: '3202'
+        type: function_point
+        name: 声明取值域与硬件换算
+        description: 光源亮度 50–100/步 5、刷新定时器 1–24、对焦 0–264 与闭环参数、氛围灯 0–100 与 ×2.55 换算、几何步进 104/13、增益 0–255。
+        spec: "`const.py:94-192`。"
+        constraint: 每个值域都必须可追溯到真机实测/固件菜单定义。
+        input: 无
+        process: 常量
+        output: 实体边界
+      - id: '3211'
+        type: function_constraint
+        name: 元组宽度必须与全部解包点一致
+        description: 4 张表被 6 处解包（含 2 处推导式），宽度漂移只在「开机 + 慢轮」爆发，故必须用 AST 静态比对而非运行时断言。
+      - id: '3212'
+        type: function_spec
+        name: 未消费常量规格
+        description: 存在零生产消费者的常量（`FOCUS_STEP_UNIT` 仅被回归测试断言、`KEYCODES` 仅被服务消费而平台用字面量），它们的作用是「防假设改回」的哨兵而非运行时参数。
+  - id: '4'
+    type: directory
+    name: 电源与遥控交互
+    description: 用户直接操作投影仪的能力——开关机、音量、静音、媒体与菜单按键、以及绕过实体的按键服务。
+    children:
+    - id: '41'
+      type: function
+      name: 开关投影仪
+      description: 以「加锁 + 动作前探测 + 盲发 toggle + 动作后确认」实现幂等的开机/关机；不可达时绝不发键。
+      module_refs: ["entity-platforms"]
+      depends_on: ["12"]
+      node_context:
+        keywords: ["power_toggle", "idempotent", "lock", "confirm"]
+        code_mapping:
+          - "custom_components/epson_ef/media_player.py:178-199"
+          - "custom_components/epson_ef/media_player.py:159-176"
+      children:
+      - id: '4101'
+        type: function_point
+        name: 动作前探测电源真值
+        description: KEYCODE_POWER 是盲 toggle，只有先知道当前态才能保证「确保开机」不变成「翻转」。
+        spec: "`media_player.py:181`, `:193`；探测实现 `api.py:221-276`。"
+        input: 无
+        process: probe → 与目标比较
+        output: 当前态
+      - id: '4102'
+        type: function_point
+        name: 串行化电源动作
+        description: 用每实体 `asyncio.Lock` 防止两次并发调用把设备翻两次。
+        spec: "`media_player.py:73`, `:180`, `:192`。"
+        constraint: 锁是每实体实例级，`send_key` 服务与按钮发的 POWER 不经过它（risk.md R-08）。
+        input: 并发调用
+        process: async with
+        output: 串行执行
+      - id: '4103'
+        type: function_point
+        name: 电源切换确认与回落
+        description: 发键后乐观改缓存并轮询确认；确认超期则请求协调器刷新回落到真值。
+        spec: "`media_player.py:159-176`。"
+        input: 目标态
+        process: 乐观 → wait_for_state → refresh
+        output: 收敛后的状态
+      - id: '4111'
+        type: function_constraint
+        name: 盲切换电源键约束
+        description: 固件无 set-power 命令，只有 toggle；幂等性只能靠探测获得，不能靠重试。
+    - id: '42'
+      type: function
+      name: 注入遥控按键
+      description: 把用户操作翻译成 Android keycode 经 NOTIFY_KEYEVENT 注入——覆盖媒体键、菜单导航键与 domain 级 send_key 服务。（合并 M3：按钮实体 / media_player / 服务三个入口）
+      module_refs: ["entity-platforms", "entry-core"]
+      depends_on: ["11"]
+      node_context:
+        keywords: ["keyevent", "keycode", "button_entities", "send_key_service"]
+        code_mapping:
+          - "custom_components/epson_ef/button.py:17-83"
+          - "custom_components/epson_ef/media_player.py:201-228"
+          - "custom_components/epson_ef/services.py:43-54"
+          - "custom_components/epson_ef/const.py:195-219"
+      children:
+      - id: '4201'
+        type: function_point
+        name: 媒体与音量键
+        description: 播放/暂停/上一个/下一个/音量增减各对应一个 keycode。
+        spec: "`media_player.py:201-228`。"
+        input: HA 媒体动作
+        process: 单次按键注入
+        output: 无返回
+      - id: '4202'
+        type: function_point
+        name: 菜单导航与功能面板
+        description: HOME/BACK/MENU/方向键与一批 `NOTIFY_APP_*` 功能触发（手动对焦、梯形校正、屏幕适配、蓝牙音箱模式等）。
+        spec: "`button.py:17-83` 的 30 条 `BUTTON_DEFS`。"
+        constraint: 部分按钮效果固件可能忽略（如 `input_source` 的 HDMI 键，`button.py:21` 注释），实体 `available` 恒 True 以便给出明确错误而非禁用。
+        input: 用户点击
+        process: 表驱动单次下发
+        output: 无返回
+      - id: '4203'
+        type: function_point
+        name: 按键服务与键名解析
+        description: `send_key` 服务把键名大写查表，未命中但为纯数字时直接当 keycode；未知键拒绝执行。
+        spec: "`services.py:43-54`。"
+        constraint: `KEYCODES` 只被该服务消费，平台层普遍用字面量（如 `media_player.py:184` 的 `26`），存在双份事实。
+        input: "`key: str` + 可选 entity_id"
+        process: upper → 查表 → 数字兜底
+        output: 按键注入完成
+      - id: '4211'
+        type: function_constraint
+        name: 按键语义固件侧不确定
+        description: 投影仪回 SUCCESS 不代表按键产生了动作；部分键（实验性信号源）可能被固件忽略。
+    - id: '43'
+      type: function
+      name: 切换静音状态
+      description: 静音只有 toggle 键（164）且无状态查询，故仅在目标值与本地记忆不同时发一次，并用 RestoreEntity 跨重启恢复。
+      module_refs: ["entity-platforms"]
+      depends_on: ["42"]
+      node_context:
+        keywords: ["mute_toggle", "local_memory", "restore_entity"]
+        code_mapping:
+          - "custom_components/epson_ef/media_player.py:50"
+          - "custom_components/epson_ef/media_player.py:75-81"
+          - "custom_components/epson_ef/media_player.py:207-216"
+      children:
+      - id: '4301'
+        type: function_point
+        name: 去重后盲切换
+        description: 目标值与本地记忆相同则不发键，否则发一次 MUTE toggle 并翻本地值。
+        spec: "`media_player.py:212-216`。"
+        input: "`mute: bool`"
+        process: 比较 → toggle
+        output: 本地静音态更新
+      - id: '4302'
+        type: function_point
+        name: 重启恢复静音记忆
+        description: 从 HA 上次状态恢复静音值，初值假定未静音。
+        spec: "`media_player.py:50`, `:75-81`。"
+        input: 历史状态
+        process: async_get_last_state
+        output: 恢复的布尔值
+      - id: '4311'
+        type: function_constraint
+        name: 静音态不可读
+        description: 固件无静音状态查询，物理遥控器改动后必漂移；实体用 RestoreEntity 但未声明 `assumed_state`（与「不可知状态必须诚实暴露」原则的现存偏差）。
+    - id: '44'
+      type: function
+      name: 设定启动模式
+      description: 把「节能/快速启动」两个中文选项与固件 0/1 原始值双向映射后写入，并保留原始值属性供核对。
+      module_refs: ["entity-platforms", "state-coordinator"]
+      depends_on: ["32", "132"]
+      node_context:
+      keywords: ["standby_mode", "option_mapping", "raw_value"]
+      code_mapping:
+        - "custom_components/epson_ef/select.py:116-164"
+        - "custom_components/epson_ef/const.py:27-45"
+      children:
+      - id: '4401'
+        type: function_point
+        name: 选项与原始值互转
+        description: 0=节能 / 1=快速启动；映射依据固件菜单定义，原始值始终暴露。
+        spec: "`const.py:27-45`；实体 `select.py:143-150`。"
+        constraint: 若实际设备映射相反，用户可通过 `raw_value` 属性核对——这是「不臆造语义」的落地方式。
+        input: 中文选项
+        process: 双向映射
+        output: 固件原始值
+  - id: '5'
+    type: directory
+    name: 画面控制
+    description: 投影画面的可写设置与几何校正——亮度、投影方式、偏好、色温、对比度、色彩增益、梯形/变焦/位移。
+    children:
+    - id: '51'
+      type: function
+      name: 调节光源亮度
+      description: 50–100 步进 5 的光源亮度滑条；写后乐观更新，读值优先取轮询真值。
+      module_refs: ["entity-platforms"]
+      depends_on: ["32", "132"]
+      node_context:
+        keywords: ["light_output", "brightness", "optimistic_write"]
+        code_mapping:
+          - "custom_components/epson_ef/number.py:66-140"
+          - "custom_components/epson_ef/const.py:94-97"
+      children:
+      - id: '5101'
+        type: function_point
+        name: 写后乐观更新并刷新
+        description: 写成功即改 `settings["light_output"]` 并请求刷新，UI 立即响应。
+        spec: "`number.py:123-133`。"
+        input: 目标值
+        process: set → 写缓存 → refresh
+        output: 实体状态更新
+      - id: '5102'
+        type: function_point
+        name: 轮询值优先与恢复值兜底
+        description: 状态优先取慢轮真值，未覆盖时回退到本地乐观值/恢复值。
+        spec: "`number.py:110-121`。"
+        input: 快照 + 本地值
+        process: 优先链
+        output: 显示值
+      - id: '5111'
+        type: function_constraint
+        name: 待机写入必失败
+        description: 固件待机时拒绝写，实体会抛错并保持原值（`number.py:71-73` 注释 + `:126-128`）。
+    - id: '52'
+      type: function
+      name: 调整画面档位设置
+      description: 投影方式（正投/吊装/背投/吊装背投）、投影偏好（色彩 35 / 明亮 6）、色温（0/1/2）、动态对比度（关/正常/高速）四类多档设置的选择与回读。
+      module_refs: ["entity-platforms", "state-coordinator"]
+      depends_on: ["32", "132"]
+      node_context:
+        keywords: ["select_entities", "option_labels", "raw_value"]
+        code_mapping:
+          - "custom_components/epson_ef/select.py:48-113"
+          - "custom_components/epson_ef/const.py:68-92"
+      children:
+      - id: '5201'
+        type: function_point
+        name: 档位标签映射
+        description: 有标签的档位显示中文语义名，无标签的（色温）直接显示原始值，并统一暴露 `raw_value`。
+        spec: "`select.py:76-102`；色温不给标签的理由见 `const.py:72-74`。"
+        constraint: 未确认语义的档位不得臆造标签。
+        input: 固件原始值
+        process: 双向映射
+        output: 选项
+      - id: '5202'
+        type: function_point
+        name: 写后乐观并请求刷新
+        description: 写成功改 `settings.<suffix>` 后请求刷新。
+        spec: "`select.py:104-113`。"
+        input: 选项
+        process: set → 写缓存 → refresh
+        output: 状态更新
+    - id: '53'
+      type: function
+      name: 设定色彩增益
+      description: 引擎侧 RGB 增益三通道（0–255），三实体共享一条 GET，写入为「读现值 → 替换单通道 → 写整串」。
+      module_refs: ["entity-platforms"]
+      depends_on: ["32", "132"]
+      node_context:
+      keywords: ["color_gain", "rgb", "read_modify_write"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:304-396"
+        - "custom_components/epson_ef/api.py:432-460"
+      children:
+      - id: '5301'
+        type: function_point
+        name: 三通道共享读值
+        description: 一条 GET 返回 R G B 三元组，三个实体各取一个分量。
+        spec: "`number.py:351-368`；读命令 `api.py:432-447`。"
+        input: 诊断快照
+        process: 拆分三元组
+        output: 单通道值
+      - id: '5302'
+        type: function_point
+        name: 读改写整串写回
+        description: 取当前三元组、替换目标通道、整串写回。
+        spec: "`number.py:379-396`。"
+        constraint: 并发写两通道会丢更新（无锁，risk.md R-04）。
+        input: 新通道值
+        process: read-modify-write
+        output: 新三元组
+      - id: '5311'
+        type: function_constraint
+        name: 暴露完整三元组
+        description: 每个通道实体都暴露完整原始三元组，便于换色偏时对照另两个通道（`number.py:370-377`）。
+    - id: '54'
+      type: function
+      name: 切换自动对比度
+      description: 引擎侧自动对比度开关（写-only，读通路本机 FAIL，效果未可感知验证）。
+      module_refs: ["entity-platforms"]
+      depends_on: ["132"]
+      node_context:
+      keywords: ["auto_contrast", "write_only", "assumed_state"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:188-246"
+        - "custom_components/epson_ef/api.py:623-632"
+      children:
+      - id: '5401'
+        type: function_point
+        name: 乐观开关与重启恢复
+        description: 写成功后翻本地值，跨重启用 RestoreEntity 恢复，显式 `assumed_state`。
+        spec: "`switch.py:219-246`。"
+        input: 开关动作
+        process: set → 翻转 → 持久化
+        output: 假设状态
+      - id: '5411'
+        type: function_constraint
+        name: 写成功不等于效果可见
+        description: 写命令 SUCCESS 只证明固件接受了命令；读通路 FAIL 且肉眼效果不明显，代码注释如实记录（`switch.py:196-198`）。
+    - id: '55'
+      type: function
+      name: 配置画面辅助开关
+      description: 自动校正、墙面颜色自适应、移动检测、智能护眼、开机校正、画面遮蔽等 0/1 型开关，采用同值回写方式。
+      module_refs: ["entity-platforms"]
+      depends_on: ["32", "132"]
+      node_context:
+      keywords: ["config_switches", "same_value_writeback", "suffix_contract"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:56-117"
+        - "custom_components/epson_ef/const.py:53-66"
+      children:
+      - id: '5501'
+        type: function_point
+        name: 同值回写
+        description: 写 `"1"`/`"0"` 到对应 `CONFIG_SET_*`，成功后更新缓存。
+        spec: "`switch.py:104-117`。"
+        constraint: 捕获范围过宽（`except Exception`），会把编程错误也报成设备失败。
+        input: 开关动作
+        process: 单次写
+        output: 状态更新
+      - id: '5511'
+        type: function_constraint
+        name: 后缀三元合一
+        description: 同一 suffix 同时是 `settings` 键、`unique_id` 尾段、legacy 清理键——三处必须一致。
+    - id: '56'
+      type: function
+      name: 步进调整画面几何
+      description: 变焦放大/缩小、四向位移、重置校正——把几何子命令封装成多个一键按钮。
+      module_refs: ["entity-platforms"]
+      depends_on: ["133"]
+      node_context:
+      keywords: ["geometry_buttons", "zoom", "shift", "reset"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:65-82"
+        - "custom_components/epson_ef/api.py:590-618"
+      children:
+      - id: '5601'
+        type: function_point
+        name: 变焦与位移按钮
+        description: 6 个方向/缩放按钮复用 `CONFIG_SET_QC` 的 `1`/`2` 子命令，步进量取自常量。
+        spec: "`button.py:68-79`。"
+        input: 点击
+        process: 表驱动下发
+        output: 画面变化
+      - id: '5602'
+        type: function_point
+        name: 重置校正逃生口
+        description: 子命令 `"5"` 作为变焦/位移误操作的逃生口，会清掉梯形校正（可用自动校正重建）。
+        spec: "`button.py:80-82`；`api.py:610-618`。"
+        constraint: 破坏性操作，无二次确认。
+        input: 点击
+        process: 单次写
+        output: 校正清零
+  - id: '6'
+    type: directory
+    name: 环境光控制
+    description: 投影仪氛围灯（光效灯带）的开关、亮度与模式——固件全部无读通路，故一律为乐观状态。
+    children:
+    - id: '61'
+      type: function
+      name: 开关氛围灯
+      description: 三类灯（氛围灯本体 / 欢迎灯 / 触控传感器灯）按子索引拼参数写入，写后乐观翻转并跨重启恢复。
+      module_refs: ["entity-platforms"]
+      depends_on: ["132", "32"]
+      node_context:
+      keywords: ["ambient_light", "subindex", "optimistic"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:120-185"
+        - "custom_components/epson_ef/api.py:387-398"
+      children:
+      - id: '6101'
+        type: function_point
+        name: 按子索引拼写参数
+        description: kind 3 → `"3 <01> 48"`（48 为固件常量）；kind 4/5 → `"4 <01>"`/`"5 <01>"`。
+        spec: "`api.py:394-398`；表 `const.py:138-142`。"
+        input: 开关动作
+        process: 拼 params
+        output: 写命令
+      - id: '6102'
+        type: function_point
+        name: 写后乐观翻转与重启恢复
+        description: 写成功才翻本地值；`assumed_state` 标为假设值；RestoreEntity 跨重启恢复。
+        spec: "`switch.py:158-185`。"
+        input: 开关动作
+        process: set → 翻转
+        output: 假设状态
+    - id: '62'
+      type: function
+      name: 调节氛围灯亮度与模式
+      description: 亮度 UI 0–100 线性换算为固件 0–255；模式 4 档映射到固件光效槽 3–6。
+      module_refs: ["entity-platforms"]
+      depends_on: ["61"]
+      node_context:
+      keywords: ["ambient_brightness", "ambient_mode", "linear_scale"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:399-458"
+        - "custom_components/epson_ef/select.py:167-219"
+        - "custom_components/epson_ef/const.py:144-163"
+      children:
+      - id: '6201'
+        type: function_point
+        name: UI 值与固件值换算
+        description: 亮度 `round(ui * 2.55)` 并 clamp 到 0–255，与官方小程序一致。
+        spec: "`api.py:400-409`；`const.py:155-156`。"
+        input: 0–100
+        process: 线性换算
+        output: 0–255
+      - id: '6202'
+        type: function_point
+        name: 模式槽位映射
+        description: 模式1–4 → 固件槽 3–6；小程序临时预览槽 11 故意不暴露。
+        spec: "`const.py:158-163`；`api.py:411-418`。"
+        constraint: 无读通路，切换后无法核对。
+        input: 模式名
+        process: 查表
+        output: 写命令
+  - id: '7'
+    type: directory
+    name: 诊断与观测
+    description: 设备读数的呈现与排障出口——灯时/测距/在线状态、扩展诊断属性、诊断包导出，以及任意命令透传服务。（合并 M4）
+    children:
+    - id: '71'
+      type: function
+      name: 显示设备读数
+      description: 灯光累计时长（含陈旧标记与测量时刻）与投射距离（毫米转米并保留原始值）。
+      module_refs: ["entity-platforms", "state-coordinator"]
+      depends_on: ["31"]
+      node_context:
+      keywords: ["sensors", "lamp_hours", "distance", "stale"]
+      code_mapping:
+        - "custom_components/epson_ef/sensor.py:57-121"
+      children:
+      - id: '7101'
+        type: function_point
+        name: 灯光累计时长与陈旧标记
+        description: 关机时结转上次读数，并用 `stale` 布尔 + `measured_at` 时间戳表明这是旧值。
+        spec: "`sensor.py:67-83`；结转 `coordinator.py:139-144`。"
+        input: 快照
+        process: 原值 + 时间戳
+        output: 时长（小时）
+      - id: '7102'
+        type: function_point
+        name: 投射距离换算
+        description: 固件返回毫米，实体以米呈现并保留 `distance_mm` 原始值。
+        spec: "`sensor.py:88-121`。"
+        input: 毫米串
+        process: /1000 + 保留原值
+        output: 距离（米）
+    - id: '72'
+      type: function
+      name: 监测投影仪在线状态
+      description: 连通性二元传感器跟随协调器更新成败；它必须始终保持可用，以便能报告「离线」。
+      module_refs: ["entity-platforms"]
+      depends_on: ["31"]
+      node_context:
+      keywords: ["connectivity", "availability", "binary_sensor"]
+      code_mapping:
+        - "custom_components/epson_ef/binary_sensor.py:29-56"
+      children:
+      - id: '7201'
+        type: function_point
+        name: 可用性反转
+        description: `available` 恒 True，`is_on` 取协调器 `last_update_success`——这是有意的降级可见性设计。
+        spec: "`binary_sensor.py:49-56`；同类设计见 `button.py:131-134`。"
+        constraint: 与多数实体的 `available = last_update_success` 相反，改实体基类时不要「统一」掉。
+        input: 协调器状态
+        process: 布尔映射
+        output: 在线/离线
+    - id: '73'
+      type: function
+      name: 暴露扩展诊断信息
+      description: 把慢诊断段的只读原始值聚合到 media_player 属性，并通过 diagnostics 导出四段式快照（不含凭据）。
+      module_refs: ["entity-platforms", "entry-core"]
+      depends_on: ["31", "21"]
+      node_context:
+      keywords: ["diagnostics", "attributes", "support_bundle"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:109-136"
+        - "custom_components/epson_ef/diagnostics.py:12-39"
+      children:
+      - id: '7301'
+        type: function_point
+        name: 聚合只读诊断属性
+        description: 16 项 `CONFIG_GET_*` 原始串（vmute/色温/对比度/几何/惯性/自动对焦等）逐项暴露为实体属性。
+        spec: "`media_player.py:121-129`；采集 `coordinator.py:63-83`。"
+        input: 诊断快照
+        process: 白名单投影
+        output: 实体属性
+      - id: '7302'
+        type: function_point
+        name: 导出不含凭据的诊断包
+        description: 输出 entry/identity/coordinator/api 四段；凭据硬编码在 const 且不进 entry，故导出只有 host/port 与 nonce 缓存布尔。
+        spec: "`diagnostics.py:19-39`。"
+        constraint: 安全性依赖「凭据不进 entry」前提；若未来把凭据写进 entry.data，`dict(entry.data)` 会直接泄露。
+        input: hass + entry
+        process: 组装四段
+        output: 可下载 JSON
+    - id: '74'
+      type: function
+      name: 透传原生命令
+      description: `raw_request` 服务把任意 pjctl 命令与参数原样下发，结果（含异常文本）经 `epson_ef_response` 事件回传，供自动化排障。
+      module_refs: ["entry-core"]
+      depends_on: ["11"]
+      node_context:
+      keywords: ["raw_request", "passthrough", "event_bus", "no_allowlist"]
+      code_mapping:
+        - "custom_components/epson_ef/services.py:56-94"
+      children:
+      - id: '7401'
+        type: function_point
+        name: 无白名单透传
+        description: 命令 id 与 params 不做枚举校验，能力上界等于固件全集（含所有写命令）。
+        spec: "`services.py:61-64`。"
+        constraint: 无 `require_admin`、无参数校验——任意可调服务的用户可发危险写命令（risk.md R-23）。
+        input: "`id`, `params`, 可选 entity_id"
+        process: 直接 request
+        output: 设备响应
+      - id: '7402'
+        type: function_point
+        name: 异常折算为错误载荷
+        description: 任何异常都折成 `{"error": str(err)}`，保证事件一定发出。
+        spec: "`services.py:65-66`（`noqa: BLE001`）。"
+        constraint: 捕获过宽——编程错误与设备错误在事件里不可区分。
+        input: 任意异常
+        process: 转 dict
+        output: 错误载荷
+      - id: '7403'
+        type: function_point
+        name: 事件总线回传
+        description: 向 `epson_ef_response` 广播 entity_id/id/response；仓库内无订阅者，由外部自动化消费。
+        spec: "`services.py:67-70`。"
+        constraint: 无 correlation id，并发调用无法把响应与请求配对。
+        input: 结果
+        process: async_fire
+        output: 总线事件
+      - id: '7411'
+        type: function_constraint
+        name: 危险命令缺乏运行时闸门
+        description: 语义方法「不实现」的危险变体（立即刷新并关机、恢复氛围灯出厂）在该服务面前完全敞开。
+  - id: '8'
+    type: directory
+    name: 质量保障设施
+    description: 本仓库的验证与现场分析设施——离线单测（不依赖 HA）、AST 契约测试、真机探测脚本与 CI 门禁。它们不参与运行时，但决定了协议结论的可信度。
+    children:
+    - id: '81'
+      type: function
+      name: 隔离依赖执行离线验证
+      description: 用注入伪包 `epson_ef` 的方式绕开会 import Home Assistant 的包入口，使协议层能在无 HA 环境被单测；代价是装配层完全不被执行。
+      module_refs: ["verification-harness"]
+      depends_on: []
+      node_context:
+      keywords: ["import_shim", "offline_tests", "no_homeassistant"]
+      code_mapping:
+        - "tests/test_api.py:23-26"
+        - "tests/test_const_contract.py:21-24"
+        - "tests/test_regressions.py:24-27"
+      children:
+      - id: '8101'
+        type: function_point
+        name: 注入伪包路径
+        description: 手工构造 `types.ModuleType("epson_ef")` 并把 `__path__` 指向源码目录，从而 import `epson_ef.api` 而不执行 `__init__.py`。
+        spec: "`tests/test_api.py:23-26`（三处测试文件同款）。"
+        input: 源码路径
+        process: 伪造包对象
+        output: 可 import 的包
+      - id: '8102'
+        type: function_point
+        name: 校验隔离必要性
+        description: 反证：直接 `import epson_ef.button` 会因 `homeassistant` 缺失而 ModuleNotFoundError，故 12/14 个模块在 CI 中不可 import。
+        spec: "`__init__.py:6-11` 等 HA import 是隔离的直接原因。"
+        input: 无
+        process: 反证实验
+        output: 隔离边界确认
+      - id: '8111'
+        type: function_constraint
+        name: 伪包不得执行业务装配
+        description: 伪包使 `__init__.py` 永不执行 → setup/unload/迁移/服务注册在 CI 中零覆盖（risk.md 技术债「HA 运行时零覆盖」）。
+    - id: '82'
+      type: function
+      name: 锁定协议与配置契约
+      description: 用单元测试锁定 Digest 握手、命令载荷的 size 语义、电源态判定；用 AST 测试锁定配置表宽度与解包点、注册表 API 实参顺序、遗留清理表覆盖。
+      module_refs: ["verification-harness"]
+      depends_on: ["81"]
+      node_context:
+      keywords: ["unit_tests", "ast_contract", "regression_guard"]
+      code_mapping:
+        - "tests/test_api.py:100-613"
+        - "tests/test_const_contract.py:25-145"
+        - "tests/test_regressions.py:38-219"
+      children:
+      - id: '8201'
+        type: function_point
+        name: 验证认证与载荷
+        description: 断言 nc 递增、缓存 nonce 避免二次挑战、401 重试一次、以及 `size` 等于分词数而非字节数。
+        spec: "`tests/test_api.py:100-280`（`test_set_light_output_size_is_token_count` `:235`）。"
+        input: 假 session/假响应
+        process: 断言
+        output: 契约证据
+      - id: '8202'
+        type: function_point
+        name: 判定电源态语义
+        description: 断言存活失败→不可达、唤醒标志失败→待机、断连→待机；这些正是真机踩过的坑。
+        spec: "`tests/test_api.py:165-216`、`tests/test_regressions.py:186-219`。"
+        input: 桩异常
+        process: 断言异常类型
+        output: 语义守护
+      - id: '8203'
+        type: function_point
+        name: 锁定配置表结构
+        description: 用 AST 比对表定义宽度与全部解包点宽度（含推导式），并锚定已知消费位置不得漂移。
+        spec: "`tests/test_const_contract.py:25-49`, `:111-145`。"
+        constraint: 必须同时扫描 `ast.For` 与 `ast.comprehension`，只认前者会漏。
+        input: 源码文本
+        process: ast.parse
+        output: 宽度断言
+      - id: '8204'
+        type: function_point
+        name: 固化真机缺陷回归
+        description: 三条真机缺陷各配测试：对焦闭环不得假设步长、清理表必须覆盖被移除实体、注册表查找实参顺序。
+        spec: "`tests/test_regressions.py:1-15`（缺陷来源），`:38-171`（断言）。"
+        input: 无
+        process: AST/行为断言
+        output: 防回退
+      - id: '8211'
+        type: function_constraint
+        name: 直跑会漏用例
+        description: `unittest.main()` 位于两文件中部的类之间（`tests/test_api.py:507-508`、`tests/test_regressions.py:183-184`），直跑只执行 42/64 与 7/9，共 11 个用例静默不跑且 rc=0；必须用 discover 或 pytest。
+    - id: '83'
+      type: function
+      name: 真机探测与验收
+      description: 用独立脚本向真实投影仪发命令、做参数矩阵扫描与功能回环验收，并归档探测结论（历史存档，不是事实来源）。
+      module_refs: ["verification-harness"]
+      depends_on: ["81"]
+      node_context:
+      keywords: ["probe_scripts", "live_verification", "adb_recovery"]
+      code_mapping:
+        - "tools/verify_features.py"
+        - "tools/verify_full.py"
+        - "tools/diagnose_state.py"
+      children:
+      - id: '8301'
+        type: function_point
+        name: 命令能力扫描
+        description: 逐条试固件命令并观察设备响应；脚本通过 importlib 直载生产 `api.py`，因此验证的是集成实际下发的命令。
+        spec: "`tools/diagnose_state.py`、`tools/verify_features.py`；加载方式见 `tools/diagnose_state.py`。"
+        constraint: 部分命令会挂住固件单线程服务，需健康监护与解卡。
+        input: 设备 IP
+        process: 遍历 + 记录
+        output: 探测结果存档
+      - id: '8302'
+        type: function_point
+        name: 功能回环验收
+        description: 对开关机、亮度、对焦、几何等逐项做读写回环验收（会改变设备状态）。
+        spec: "`tools/verify_features.py`、`tools/verify_full.py`、`tools/verify_round4.py`。"
+        constraint: 结论不进入退出码（逻辑失败只 print），且 `verify_round4.py:24` 复刻了旧的 ±10 步长假设，与 `const.py:122` 矛盾。
+        input: 设备 IP
+        process: 真机操作
+        output: 人工判读的验收记录
+      - id: '8303'
+        type: function_point
+        name: 判别挂起与解卡
+        description: 判别哪些命令会挂服务器；必要时用 ADB `am force-stop` + `am start-service` 重启 WebApiSrv。
+        spec: "`tools/diagnose_state.py`（逐条判别哪个命令导致挂起）。"
+        constraint: 解卡依赖 ADB 5555，未进入集成，生产环境无法自救。
+        input: 设备 IP / ADB 通道
+        process: 探测 + 重启服务
+        output: 服务恢复
+      - id: '8311'
+        type: function_constraint
+        name: 存档不是事实来源
+        description: `enum_map.json` 是固件命令枚举与内部数值的映射存档；它是只读参考资料，不得替代代码注释中的实测结论。
+    - id: '84'
+      type: function
+      name: 执行 CI 门禁
+      description: 每次 push/PR 跑语法级 lint 与离线单测；范围不含 tools/，环境不装 homeassistant。
+      module_refs: ["verification-harness"]
+      depends_on: ["82"]
+      node_context:
+      keywords: ["ci_gate", "ruff", "unittest", "coverage_gap"]
+      code_mapping:
+        - ".github/workflows/tests.yml:9-24"
+      children:
+      - id: '8401'
+        type: function_point
+        name: 语法级 lint
+        description: `ruff check custom_components tests --select F,E9`——只拦未定义名/语法错误，不拦风格与未使用导入。
+        spec: "`.github/workflows/tests.yml:21`。"
+        constraint: 范围不含 `tools/`；本地 `ruff check .` 虽已全绿，但脚本腐化不会让 CI 变红。
+        input: 源码
+        process: ruff
+        output: 通过/失败
+      - id: '8402'
+        type: function_point
+        name: 离线单元测试
+        description: `python -m unittest discover -s tests -v`，64 用例全部不 import HA。
+        spec: "`.github/workflows/tests.yml:24`。"
+        input: 源码
+        process: unittest discover
+        output: 64 用例结果
+      - id: '8411'
+        type: function_constraint
+        name: 门禁不覆盖 HA 装配层
+        description: CI 不安装 homeassistant（`:18` 只装 aiohttp/ruff/pyflakes），7 个平台 + config_flow + services + 装配根在 CI 中零执行；历史 BLOCKER（5 元组解包崩溃使 58 实体全不可用）正是从此漏过。
+      - id: '8412'
+        type: function_constraint
+        name: 门禁不覆盖 tools
+        description: lint 范围显式排除 `tools/`，导致探测脚本腐化无人发现（F401 ×2、F821 ×1、默认内网 IP ×4、与生产常量矛盾 ×1）。

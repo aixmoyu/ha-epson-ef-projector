@@ -1,0 +1,583 @@
+# ════════════════════════════════════════════════════════════════════════════
+# 模块功能树 — entry-core
+# project: "ha-epson-ef-projector"
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# 范围: custom_components/epson_ef/{__init__.py,config_flow.py,diagnostics.py,
+#       services.py} = 221 + 132 + 39 + 102 = 494 行
+# 结构: 顶层节点列表 (R1); directory → function → point/spec/constraint
+# 说明: 只描述本模块负责的「装配/身份/配置/运维入口」能力；协议编解码
+#       (pjctl-transport)、轮询装配 (state-coordinator)、实体投影
+#       (entity-platforms) 不在本树内，仅作为下游依赖出现在 description 中。
+# ════════════════════════════════════════════════════════════════════════════
+- id: '1'
+  type: directory
+  name: '集成装配与生命周期'
+  description: 'HA 进程内集成的入口层——把配置条目变成一组可运行的共享对象（API 客户端 + 协调器 + 设备身份），并在升级、地址漂移、卸载等场景下维护注册表一致性。不解析 pjctl 协议，不决定轮询读什么，也不构造实体状态。'
+  children:
+  # ── 子功能域：生命周期编排 ────────────────────────────────────────────────
+  - id: '10'
+    type: directory
+    name: '生命周期编排'
+    description: 'config entry 从加载到释放的全过程编排——顺序装配、失败归还资源、按条目计数注册/注销全局服务。对应 HA 的 setup / unload / migrate 三个回调。'
+    children:
+    - id: '101'
+      type: function
+      name: '装配集成运行时'
+      description: '按固定顺序把一条 config entry 变成可运行的运行时：构造传输客户端 → 生成身份 → 修复注册表 → 解析轮询间隔 → 建协调器并首刷 → 发布 hass.data → 转发 7 个平台 → 注册服务 → 挂更新监听。任一步失败须归还已获得的资源。'
+      depends_on: []
+      node_context:
+        keywords: ["setup_entry", "assembly", "bootstrap", "platform_forward", "rollback"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:166-206"
+          - "custom_components/epson_ef/__init__.py:24-27"
+      children:
+      - id: '10101'
+        type: function_point
+        name: '解析连接参数与轮询间隔'
+        description: '从 entry 取 host/port（port 缺省 8080），并让 options 覆盖 data 里的轮询间隔，使「选项里改过的值」优先于建条目时捕获的值。'
+        spec: '三级回退 `entry.options[poll_interval]` → `entry.data[poll_interval]` → `DEFAULT_POLL_INTERVAL=15`（`__init__.py:184-187`、`const.py:11`）。'
+        constraint: 'host 直接下标取值，缺失即 KeyError，无兜底（`__init__.py:168`）。'
+        input: 'ConfigEntry（data/options）'
+        process: "`entry.data[\"host\"]`、`entry.data.get(CONF_PORT, DEFAULT_PORT)`、`entry.options.get(...)`"
+        output: "`(host, port, poll_interval)`"
+      - id: '10102'
+        type: function_point
+        name: '探测设备可达性'
+        description: 'setup 第一道门——用产品名命令确认设备在线，失败则抛出可重试的 ConfigEntryNotReady，让 HA 稍后重试而不是把条目判为错误。'
+        spec: '语义意图是「取不到 product name ⇒ 不可达」（`__init__.py:172-176`）。'
+        constraint: '⚠️ 该分支实际不可达——`get_product_name()` 内部已 `except EpsonApiError: return None`（`api.py:295-300`），异常不会冒泡到 `__init__.py:174`。真实的首刷失败点在下游协调器。'
+        input: '已构造的 `EpsonApi`'
+        process: "`await api.get_product_name()` 包在 `try/except EpsonApiError` 内"
+        output: "`product`（恒为产品名或 None，异常路径不生效）"
+      - id: '10103'
+        type: function_point
+        name: '首刷协调器并拒绝半成品上线'
+        description: '用解析出的间隔建 `Ef50Coordinator` 并强制首刷；首刷失败时不发布 hass.data、不转发平台，先关掉 API 会话再把 ConfigEntryNotReady 原样抛回 HA。'
+        spec: "`await coordinator.async_config_entry_first_refresh()`，捕获 `ConfigEntryNotReady` → `await api.close()` → `raise`（`__init__.py:188-193`）。"
+        constraint: '这是本模块唯一可达的 ConfigEntryNotReady 触发路径；捕获后必须重抛，禁止吞掉（`__init__.py:191-193`）。'
+        input: "`api` + `poll_interval`"
+        process: '构造协调器 → 首刷 → 失败先 `api.close()`'
+        output: '已刷过一轮的协调器 / 向上抛 ConfigEntryNotReady'
+      - id: '10104'
+        type: function_point
+        name: '发布共享运行时上下文'
+        description: '把 api/coordinator/product/base_id/serial 五件套按 entry_id 挂到 `hass.data[DOMAIN]`，成为 7 个平台与诊断共用的唯一入口。'
+        spec: "`hass.data.setdefault(DOMAIN, {})[entry.entry_id] = {...}`（`__init__.py:195-201`）；读取方 9 处（`binary_sensor.py:23`、`media_player.py:35`、`number.py:52`、`select.py:32`、`sensor.py:27`、`switch.py:33`、`button.py:91`、`services.py:17`、`diagnostics.py:16`）。"
+        constraint: '字典无类型契约，键名靠约定；`product` 与 `serial` 两个键在当前代码中无消费方（`product` 仅被 `diagnostics.py:27` 读取，平台改读 `coordinator.data["product"]`）。'
+        input: '装配过程中的局部对象'
+        process: '组装 dict 后按 entry_id 落位'
+        output: "`hass.data[DOMAIN][entry_id]`"
+      - id: '10105'
+        type: function_point
+        name: '转发平台并注册更新监听'
+        description: '把 7 个实体平台一次性转发给 HA，再注册「条目被修改即整条 reload」的监听，最后返回 True 宣告装配成功。'
+        spec: "`PLATFORMS` 固定 7 项（`__init__.py:24-27`）；`entry.add_update_listener(_async_update_listener)` 经 `entry.async_on_unload` 绑定（`__init__.py:203-205`）；监听器只做 `async_reload`（`__init__.py:209-210`）。"
+        constraint: '服务注册（`:204`）发生在平台转发之后、监听器之前——平台 setup 期间服务尚不存在。'
+        input: '已发布的 hass.data'
+        process: "`async_forward_entry_setups(entry, PLATFORMS)` → `async_register_services(hass)` → `entry.async_on_unload(...)`"
+        output: "7 个平台实体 + 已注册的 2 个服务 + 更新监听"
+      - id: '10111'
+        type: function_spec
+        name: '装配顺序规格'
+        description: '顺序被身份治理强约束——身份解析（`:178`）必须早于注册表迁移（`:180`）与遗留清理（`:181`），而迁移/清理必须早于平台转发（`:203`），否则平台会用新身份创建「第二个实体」而不是沿用旧实体。因此 setup 的步骤顺序本身是契约，不可重排。'
+      - id: '10112'
+        type: function_constraint
+        name: '失败即归还传输资源'
+        description: '已构造的 `EpsonApi` 必须在每条失败出口显式 `close()`（`__init__.py:175`、`:192`）。现状只覆盖两条出口：`get_product_name` 分支（不可达）与首刷失败；身份解析、注册表迁移、平台转发三处失败均未关闭会话（见 `risk.md` RISK-EC-04）。'
+    - id: '102'
+      type: function
+      name: '释放集成运行时'
+      description: '卸载流程——先让 7 个平台卸载（失败则整体放弃卸载），成功后再按下标弹掉运行时条目、关闭传输会话；仅当这是最后一个条目时才摘除 DOMAIN 并注销两个服务。'
+      depends_on: ["101"]
+      node_context:
+        keywords: ["unload_entry", "teardown", "service_lifecycle", "session_close"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:213-221"
+          - "custom_components/epson_ef/services.py:97-102"
+      children:
+      - id: '10201'
+        type: function_point
+        name: '卸载平台并判定成败'
+        description: '卸载以平台返回值为唯一成功判据；不成功时保留 hass.data，让 HA 保持条目「已加载」状态，避免出现半卸载。'
+        spec: "`unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)`（`__init__.py:214`），`if unload_ok:` 才继续（`:215`）。"
+        constraint: '后续所有释放动作都以 `unload_ok` 为前置，平台卸载失败会连带跳过会话关闭。'
+        input: 'ConfigEntry'
+        process: '批量卸载 7 平台'
+        output: "`bool unload_ok`"
+      - id: '10202'
+        type: function_point
+        name: '关闭传输会话'
+        description: '从 hass.data 弹出本条目的运行时字典并关闭其 API 会话，EPIPE 之前先解引用，杜绝迟到协程继续使用已卸载 entry。'
+        spec: "`data = hass.data[DOMAIN].pop(entry.entry_id)`；`await data[\"api\"].close()`（`__init__.py:216-217`）。"
+        constraint: '直接下标取值，无 `KeyError` 保护——若 hass.data 已被清空（例如 setup 部分失败后 HA 仍调用 unload），此处会抛异常。'
+        input: '已加载的条目'
+        process: 'pop → api.close()'
+        output: '会话关闭，条目从共享字典移除'
+      - id: '10203'
+        type: function_point
+        name: '末条目注销全局服务'
+        description: '服务是 domain 级全局资源，因此绑定「条目计数归零」而不是单次 unload；最后一个条目卸载时连 DOMAIN 键一起摘掉，避免留下空字典被诊断误读。'
+        spec: "`if not hass.data[DOMAIN]: hass.data.pop(DOMAIN, None); async_unregister_services(hass)`（`__init__.py:218-220`）；注销遍历 `(\"send_key\", \"raw_request\")`（`services.py:100-102`）。"
+        constraint: '判定条件是「DOMAIN 下已无任何 entry_id」，不是「当前 entry 是最后一个被显式记录的条目」。'
+        input: '卸载后的 hass.data'
+        process: '判空 → 摘 DOMAIN → 注销两服务'
+        output: "服务从 HA 服务总线移除（多 entry 时保留）"
+    - id: '103'
+      type: function
+      name: '迁移配置条目版本'
+      description: '把 ADB 时代的 v1 条目原地改写成原生 API 的 v2 条目——强制原生端口、清除相机开关字段、写回 version=2。属于一次性数据整形，不做协议适配。'
+      depends_on: []
+      node_context:
+        keywords: ["config_entry_migration", "version_upgrade", "legacy_key", "in_place_rewrite"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:31-39"
+          - "custom_components/epson_ef/config_flow.py:26"
+      children:
+      - id: '10301'
+        type: function_point
+        name: '强制重写原生 API 端口'
+        description: 'v1 的端口语义属于 ADB 通路，统一改成原生 8080；即便 v1 条目里存过别的端口也一律覆盖，不做保留。'
+        spec: "`data[CONF_PORT] = 8080`（`__init__.py:35`），常量值见 `const.py:10` `DEFAULT_PORT = 8080`。"
+        constraint: '无条件覆盖，不读取 v1 的既有 port 做判断——v1 用户自定义端口在迁移后被丢弃。'
+        input: "`{**entry.data}`（v1 数据副本）"
+        process: '写入固定 8080'
+        output: "含 port=8080 的新 data"
+      - id: '10302'
+        type: function_point
+        name: '清除 ADB 时代遗留字段'
+        description: '删掉 v1 的 `enable_camera`（ADB 相机通路专用），确保迁移后的 data 只含 v2 语义的键。'
+        spec: "`data.pop(\"enable_camera\", None)`（`__init__.py:36`）——带默认值，键不存在也不报错。"
+        constraint: '只清理已知的这一个键；v1 若还有其他专属键不会被处理（迁移表无枚举）。'
+        input: '已改端口的 data'
+        process: 'pop 遗留键'
+        output: '干净的 v2 data'
+      - id: '10303'
+        type: function_point
+        name: '写回条目版本号'
+        description: '用 HA 的条目更新 API 一次性写回 data 与 version=2，靠 HA 持久化保证下次启动不再进入迁移分支。'
+        spec: "`hass.config_entries.async_update_entry(entry, data=data, version=2)`；成功后记 info 日志（`__init__.py:37-38`）。"
+        constraint: '版本号只在这里推进；`config_flow.py:26` 的 `VERSION = 2` 只决定新建条目的初始版本。'
+        input: '整形后的 data'
+        process: 'async_update_entry(data, version=2)'
+        output: "条目 version=2，迁移日志一条"
+      - id: '10311'
+        type: function_constraint
+        name: '迁移幂等约束'
+        description: '幂等性由 `entry.version == 1` 门禁 + 写回 version=2 共同保证：第二次调用时门禁不成立，函数不触碰条目，仅返回 True（`__init__.py:33`、`:39`）。副作用是 v2 条目重复迁移为零成本，不需要额外标记位。'
+      - id: '10312'
+        type: function_constraint
+        name: '未知版本不得静默放行'
+        description: '⚠️ 现状违例：函数对 `entry.version >= 3` 的条目也返回 True（`__init__.py:33-39` 无 else 分支），会把未来版本当成「已迁移」放行。正确语义应是「非 1 且非 2 返回 False」。'
+  # ── 子功能域：设备身份治理 ────────────────────────────────────────────────
+  - id: '20'
+    type: directory
+    name: '设备身份治理'
+    description: '决定「这台投影仪是谁」并让注册表跟着身份走——序列号优先、地址兜底、跨重启持久化，身份变化时批量改写实体 unique_id 与设备 identifier，并清除被新版本取代的遗留实体。'
+    children:
+    - id: '201'
+      type: function
+      name: '解析稳定设备身份'
+      description: '在每次 setup 时确定 base_id 与 serial：先查 HA Store，再问固件序列号，取不到才把首个 host:port 钉死。身份写入 Store 而非 config entry，以避免写 entry 触发自身 reload。'
+      depends_on: []
+      node_context:
+        keywords: ["identity_resolution", "serial_number", "store_persistence", "dhcp_drift"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:42-76"
+          - "custom_components/epson_ef/api.py:302-315"
+      children:
+      - id: '20101'
+        type: function_point
+        name: '序列号优先解析'
+        description: '首选固件序列号作身份——序列号与网络地址无关，DHCP 换址不会打断实体历史。'
+        spec: "先读 `stored[\"serial\"]`；未命中才调用 `api.get_serial_number()`（`__init__.py:58-64`），后者用 `CONFIG_GET_PJ_SNO` params=`\"1\"` 取值并在任何 `EpsonApiError` 下返回 None（`api.py:302-315`）。"
+        constraint: '序列号只在此处读取一次；固件换机/换主板导致序列号变化时无校验（Store 命中即永不复核）。'
+        input: 'Store 内容 + 在线设备'
+        process: '缓存命中 → 否则远程探测 → 命中即落库'
+        output: "`serial: str | None`"
+      - id: '20102'
+        type: function_point
+        name: '身份持久化到 Store'
+        description: '用 HA `Store`（version=1，key 含 entry_id）持久化 serial 或钉死的 identity，保证 HA 重启后身份不变，且不写 config entry。'
+        spec: "`Store(hass, 1, f\"{DOMAIN}.{entry.entry_id}.identity\")`（`__init__.py:53-55`）；写入点两处：发现序列号（`:62-63`）、钉死地址（`:73-74`），均为整字典 `async_save(dict(stored))`。"
+        constraint: '不写 config entry 的理由写在注释里——写 entry 会触发 update listener 的 reload（`__init__.py:48-51`，listener 见 `:209-210`）。'
+        input: '解析结果'
+        process: 'async_load → 变更 → async_save'
+        output: "`.storage/epson_ef.<entry_id>.identity`"
+      - id: '20103'
+        type: function_point
+        name: '地址兜底钉死身份'
+        description: '固件不应答序列号（典型是待机）时，把首次见到的 host:port 钉成永久身份，使后续换址不再改变 base_id。'
+        spec: "`pinned = stored.get(\"identity\")` 优先于现场地址（`__init__.py:68-70`）；仅当 Store 为空才 `identity = f\"{host}:{port}\"` 并立即落库（`:72-75`）。"
+        constraint: '钉死是一次性且不可撤销（无清除 API）；待机中首次添加设备会把地址写成身份，直到序列号被读到为止。'
+        input: 'host / port / 已有 Store'
+        process: '命中 pinned 即返回；否则写当前地址'
+        output: "`base_id` 为 pinned 或 `host:port`，`serial` 为 None"
+      - id: '20111'
+        type: function_spec
+        name: '身份返回值二元组规格'
+        description: '函数恒返回 `(base_id, serial)`：序列号路径返回 `(serial, serial)`，兜底路径返回 `(pinned, None)`（`__init__.py:65-66`、`:70`、`:76`）。调用方据此决定 hass.data 里的 serial 是否为 None，而 base_id 始终非空。'
+      - id: '20112'
+        type: function_constraint
+        name: '身份与地址解耦约束'
+        description: 'base_id 一旦落到序列号就与 host/port 无关；host:port 只允许作为「序列号暂不可得」的临时兜底，且必须能被后续迁移修正（迁移实现见 202，修正缺口见 `risk.md` RISK-EC-12）。'
+    - id: '202'
+      type: function
+      name: '迁移注册表身份'
+      description: '当身份从旧的 host:port 变为新的 base_id 时，批量把实体 unique_id 的前缀与设备 identifier 改成新身份，保住历史与自动化引用；冲突时降级为告警而不是让 setup 崩溃。'
+      depends_on: ["201"]
+      node_context:
+        keywords: ["registry_migration", "unique_id_rewrite", "device_identifier", "idempotent"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:79-120"
+      children:
+      - id: '20201'
+        type: function_point
+        name: '改写实体唯一 ID 前缀'
+        description: '对条目内每个实体判断 unique_id 是否以旧身份开头：完全相等替换为新身份，`旧身份-` 前缀保留剩余后缀继续拼接，其余跳过。'
+        spec: "`uid == old_id → target = new_id`；`uid.startswith(f\"{old_id}-\") → f\"{new_id}{uid[len(old_id):]}\"`（`__init__.py:88-94`）；遍历用 `er.async_entries_for_config_entry`（`:87`）。"
+        constraint: '仅改本条目实体；后缀契约（`-setting-*`、`-number-*`、`-button-*` 等）由实体平台定义，本函数不解释后缀语义，只做前缀替换。'
+        input: "`(old_id, new_id, entry)`"
+        process: '前缀匹配 → `registry.async_update_entity(..., new_unique_id=target)`'
+        output: '实体 unique_id 指向新身份'
+      - id: '20202'
+        type: function_point
+        name: '设备标识替换'
+        description: '设备层同样换身份：只处理 identifiers 中含 `(DOMAIN, old_id)` 的设备，把它改写成 `{(DOMAIN, new_id)}`，保证设备卡片与实体归属同一个身份。'
+        spec: "遍历 `dr.async_entries_for_config_entry`（`__init__.py:110`），命中判定 `(DOMAIN, old_id) in device.identifiers`（`:111`），改写 `new_identifiers={(DOMAIN, new_id)}`（`:114-116`）。"
+        constraint: '使用 `async_entries_for_config_entry` 而非已弃用的 `async_get_device(identifiers=...)`，理由写在注释（HA 2026.x 弃用、2027.8.0 移除，`__init__.py:106-109`），并由 AST 测试守护（`tests/test_regressions.py:121-138`）。'
+        input: '设备注册表 + 新旧身份'
+        process: '过滤条目内设备 → 命中则替换 identifiers'
+        output: '设备 identifier 指向新身份'
+      - id: '20203'
+        type: function_point
+        name: '冲突降级为告警'
+        description: '新 unique_id 已被别的实体占用时（`ValueError`），不让整个 setup 失败，只记 warning 并跳过——代价是该实体保持旧身份。'
+        spec: "两处 `except ValueError` 分别覆盖实体与设备（`__init__.py:97-103`、`:117-120`），日志不含异常对象本身。"
+        constraint: '失败即跳过且无重试、无补偿；调用方拿不到「迁移是否完整」的结果（函数返回 None）。'
+        input: '注册表抛出的 ValueError'
+        process: 'log warning 后继续下一个'
+        output: '部分迁移的注册表（无返回值）'
+      - id: '20211'
+        type: function_constraint
+        name: '身份未变即短路'
+        description: '幂等性由函数首行的 `if old_id == new_id: return` 保证（`__init__.py:83-84`）；配合 setup 每次无条件调用（`:180`），重复执行等价于空操作，不需要持久化迁移标记。'
+      - id: '20212'
+        type: function_constraint
+        name: '迁移只认传入的旧身份'
+        description: '函数不查 Store、不推断「上一个身份是什么」，完全信任调用方传入的 `old_id`；而调用方恒传当前 `host:port`（`__init__.py:179`）。因此当历史身份是更早的地址（pinned）时，前缀不会被匹配到（见 `risk.md` RISK-EC-12）。'
+    - id: '203'
+      type: function
+      name: '清理被取代的遗留实体'
+      description: '版本升级后，旧版本创建过、新版本不再创建的实体注册项会永久显示 unavailable；此功能在每次 setup 时按「平台 × 后缀」表把它们从注册表删除。'
+      depends_on: []
+      node_context:
+        keywords: ["legacy_cleanup", "orphan_entity", "registry_repair", "upgrade"]
+        code_mapping:
+          - "custom_components/epson_ef/__init__.py:123-163"
+      children:
+      - id: '20301'
+        type: function_point
+        name: '枚举被取代实体清单'
+        description: '以「平台 → unique_id 后缀元组」的声明表记录历史上被删除或改型的实体：sensor 的 standby_mode/serial/light_output、switch 的 setting-refresh、button 的 button-engine_refresh。'
+        spec: "`legacy = {\"sensor\": (\"standby_mode\",\"serial\",\"light_output\"), \"switch\": (\"setting-refresh\",), \"button\": (\"button-engine_refresh\",)}`（`__init__.py:146-150`）；清单与 README 升级说明逐项对应（`README.md:101-106`）。"
+        constraint: '表是手工维护的枚举，新增/删除实体时必须同步，否则新的孤儿不会被清理（回归测试 `tests/test_regressions.py:112-119` 只断言其中 4 条在表内，`serial` 未被断言）。'
+        input: '无（编译期常量）'
+        process: '展开为 `(platform, unique_id)` 期望集合'
+        output: "`wanted: set[tuple[str, str]]`"
+      - id: '20302'
+        type: function_point
+        name: '双前缀匹配清理'
+        description: '同一后缀要同时匹配「新身份前缀」和「历史 host:port 前缀」两种 unique_id 形态，兼容升级用户与老地址用户。'
+        spec: "对每个后缀同时加入 `f\"{base_id}-{suffix}\"` 与 `f\"{host}:{port}-{suffix}\"`（`__init__.py:151-155`）。"
+        constraint: '历史前缀只取当前 host:port，不取 Store 里钉死的旧地址 → 换过址又没拿到序列号的用户，其历史孤儿不被覆盖（见 `risk.md` RISK-EC-13）。'
+        input: 'base_id / host / port'
+        process: '笛卡尔展开成匹配集合'
+        output: '两套前缀的期望集合'
+      - id: '20303'
+        type: function_point
+        name: '按条目遍历注册表'
+        description: '遍历本条目自己的实体（而非按 unique_id 反查），命中期盼集合即删除，并记 info 日志说明「已被取代」。'
+        spec: "`for entity in er.async_entries_for_config_entry(registry, entry.entry_id)` + `if (entity.domain, entity.unique_id) in wanted: registry.async_remove(...)`（`__init__.py:160-163`）。"
+        constraint: '删除是不可逆的注册表操作，无备份、无 dry-run；误入表的后缀会直接删掉在用的实体。'
+        input: '注册表 + wanted 集合'
+        process: '遍历 → 命中 → async_remove'
+        output: '遗留实体被移除，逐条 info 日志'
+      - id: '20311'
+        type: function_constraint
+        name: '历史事故约束（参数顺序）'
+        description: '早期实现用 `registry.async_get_entity_id(platform, DOMAIN, uid)` 反序调用，因两个实参都是字符串而不报错，导致清理静默失效、孤儿长期残留（事故记录在 `tests/test_regressions.py:1-11`）。现改为「遍历条目 + 集合判定」，不再依赖该 API 的参数顺序（`__init__.py:157-159` 注释）。'
+  # ── 子功能域：配置交互 ────────────────────────────────────────────────────
+  - id: '30'
+    type: directory
+    name: '配置交互'
+    description: '用户可见的三条配置流——首次添加（写 data + unique_id）、地址重配置（只改连接信息）、选项（只改轮询间隔）。共同契约是「能取到 product name 才算连得上」。'
+    children:
+    - id: '301'
+      type: function
+      name: '添加设备配置'
+      description: '首次添加的 user 流——收集 host/port/name/轮询间隔，用一次产品名探测验证连通性，成功则以 host:port 作为条目 unique_id 建条目，失败则以 cannot_connect 回显表单。'
+      depends_on: []
+      node_context:
+        keywords: ["config_flow_user", "connectivity_probe", "unique_id", "validation"]
+        code_mapping:
+          - "custom_components/epson_ef/config_flow.py:35-66"
+          - "custom_components/epson_ef/strings.json:2-22"
+      children:
+      - id: '30101'
+        type: function_point
+        name: '连通性探测'
+        description: '用产品名命令做一次「能连上吗」的判定；任何 `EpsonApiError` 都折算成 product=None，并且无论成败都关闭临时客户端。'
+        spec: "`api = EpsonApi(host, port)` → `try: product = await api.get_product_name() except EpsonApiError: product = None finally: await api.close()`（`config_flow.py:38-44`）。"
+        constraint: '探测只看「是否返回非空产品名」，不校验机型、不校验固件能力（manifest 声明 `local_polling`，无最小固件版本探测）。'
+        input: '表单 host/port'
+        process: '临时客户端 → 产品名 → 关闭'
+        output: "`product: str | None`"
+      - id: '30102'
+        type: function_point
+        name: '条目唯一 ID 去重'
+        description: '以 `host:port` 作为 config entry 的 unique_id 并调用 abort-if-configured，阻止同一地址被添加两次。'
+        spec: "`await self.async_set_unique_id(f\"{host}:{port}\")` → `self._abort_if_unique_id_configured()`（`config_flow.py:47-50`）。"
+        constraint: '去重粒度是地址而非设备序列号——同一台设备换 IP 后「重新添加」不会被识别为重复（条目 unique_id 与实体身份 serial 双源，已登记为全局 `architecture_views/risk.md` R-16）。'
+        input: '通过探测的 host/port'
+        process: 'set_unique_id → abort_if_configured'
+        output: '新建条目或被 HA 中止'
+      - id: '30103'
+        type: function_point
+        name: '校验表单字段'
+        description: '定义四项输入的约束：轮询间隔强制 int 且限 5–300 秒，host/port/name 只做类型约束。'
+        spec: "轮询间隔 `vol.All(vol.Coerce(int), vol.Range(min=5, max=300))`（`config_flow.py:61-63`）；host 为裸 `str`（`:58`），port 为裸 `int`（`:59`），均无格式/范围校验。"
+        constraint: 'host 不校验 IPv4/主机名格式，空字符串也能通过 schema；port 不限 1–65535。真实防护来自探测失败（`cannot_connect`）。'
+        input: '用户提交的 dict'
+        process: 'voluptuous schema 校验'
+        output: '已校验的 user_input 或表单错误'
+      - id: '30111'
+        type: function_spec
+        name: '建条目数据规格'
+        description: '成功后写入的 data 即整个 user_input（host/port/name/poll_interval 四键），title 取 name 或 `DEFAULT_NAME`（`config_flow.py:51-53`）；条目版本由类属性 `VERSION = 2` 决定（`:26`），无 `MINOR_VERSION`。'
+      - id: '30112'
+        type: function_constraint
+        name: '仅手动添加约束'
+        description: '配置流只有 user 与 reconfigure 两条主动入口，全仓库不存在 `async_step_zeroconf` / `async_step_dhcp` / `async_step_import` / `async_step_reauth`（`grep` 于 `custom_components/epson_ef/` 无命中）；因此设备不会被自动发现，IP 必须由用户手工填写并当场探测通过。'
+    - id: '302'
+      type: function
+      name: '重配置设备地址'
+      description: '让已存在的条目改指向新 IP（DHCP 漂移场景），复用同一次连通性探测，成功后只更新 data 并中止流程，由 update listener 触发一次 reload，实体与历史保持不变。'
+      depends_on: ["301", "201"]
+      node_context:
+        keywords: ["reconfigure_flow", "dhcp_change", "entry_update", "reload"]
+        code_mapping:
+          - "custom_components/epson_ef/config_flow.py:68-105"
+      children:
+      - id: '30201'
+        type: function_point
+        name: '承接既有条目'
+        description: '从流程上下文取回待改写的条目，表单默认值即该条目当前的 host/port，用户只改变化的那一项。'
+        spec: "`entry = self._get_reconfigure_entry()`（`config_flow.py:72`）；默认值 `entry.data.get(CONF_HOST)`、`entry.data.get(CONF_PORT, DEFAULT_PORT)`（`:96-101`）。"
+        constraint: '表单只含 host/port；name 与 poll_interval 不在重配置能力范围内（后者走 options）。'
+        input: 'HA 注入的 reconfigure entry'
+        process: '读取当前值作默认'
+        output: '预填表单'
+      - id: '30202'
+        type: function_point
+        name: '写入新地址并交还 reload'
+        description: '探测通过后只做 data 更新并 abort，不自己调 reload——注释明确交给 update listener，避免重复 reload。'
+        spec: "`return self.async_update_and_abort(entry, data_updates=user_input)`（`config_flow.py:87-89`）；reload 由 `__init__.py:209-210` 的监听器执行。"
+        constraint: '不改 config entry 的 unique_id（仍是旧 host:port），也不再做 unique_id 去重 → 两个条目可能被重配置到同一地址而互不感知。'
+        input: '已探测通过的 user_input'
+        process: 'update_and_abort'
+        output: '条目 data 更新 + 异步 reload'
+      - id: '30211'
+        type: function_constraint
+        name: '连接失败不落盘'
+        description: '探测失败时只回 `errors["base"] = "cannot_connect"` 并重新渲染表单，条目 data 保持原值——不会把条目改成一个连不上的地址（`config_flow.py:84-90`）。'
+    - id: '303'
+      type: function
+      name: '调整轮询间隔'
+      description: 'options 流只承载一个参数——轮询间隔；表单默认值回显「生效值」（options 优先、data 兜底），提交后写入 options，由 update listener 触发 reload 使新间隔生效。'
+      depends_on: ["302"]
+      node_context:
+        keywords: ["options_flow", "poll_interval", "effective_value", "reload"]
+        code_mapping:
+          - "custom_components/epson_ef/config_flow.py:108-132"
+      children:
+      - id: '30301'
+        type: function_point
+        name: '回显生效间隔'
+        description: '表单默认值必须等于运行时真正使用的值，否则用户会看到「选项里是 30、实际跑 15」的假象。'
+        spec: "`entry.options.get(CONF_POLL_INTERVAL, entry.data.get(CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL))`（`config_flow.py:119-128`），与 setup 的三级回退（`__init__.py:184-187`）逐级一致。"
+        constraint: '回显逻辑与 setup 取值逻辑是两处独立实现，任一处改动都必须同步，否则默认值漂移。'
+        input: '条目 options/data'
+        process: '三级 get 链'
+        output: '表单默认值（int）'
+      - id: '30302'
+        type: function_point
+        name: '保存间隔选项'
+        description: '提交即把 user_input 整体写进 options（title 留空），不触碰 data，因此改间隔不会修改连接信息。'
+        spec: "`return self.async_create_entry(title=\"\", data=user_input)`（`config_flow.py:112-113`）；唯一字段是 `CONF_POLL_INTERVAL`，范围 5–300（`:129`）。"
+        constraint: 'options 只写不读的其他键不会生效——setup 只读 `CONF_POLL_INTERVAL` 一个键（`__init__.py:184`）。'
+        input: '用户提交的间隔'
+        process: 'create_entry(data=user_input)'
+        output: '条目 options 更新（随后 reload）'
+      - id: '30311'
+        type: function_constraint
+        name: '选项流不得越权改连接'
+        description: 'options schema 只声明 poll_interval（`config_flow.py:117-131`），地址变更被强制引导到 reconfigure 流；这是「能力边界」而不是遗漏，改动 options 时不得加入 host/port。'
+  # ── 子功能域：运行期接口 ──────────────────────────────────────────────────
+  - id: '40'
+    type: directory
+    name: '运行期接口'
+    description: '绕过实体的一次性动作入口与可观测出口——两个 domain 级服务（按键、原生透传）与一个诊断导出。服务按实体反查条目，诊断只读 hass.data 快照。'
+    children:
+    - id: '401'
+      type: function
+      name: '注册与注销自定义服务'
+      description: '以「已存在即跳过」的方式幂等注册 send_key / raw_request 两个 domain 级服务，并在最后一个条目卸载时整体注销，使服务可用性与集成加载状态一致。'
+      depends_on: ["101", "102"]
+      node_context:
+        keywords: ["service_registration", "idempotent_register", "lifecycle_binding"]
+        code_mapping:
+          - "custom_components/epson_ef/services.py:38-41"
+          - "custom_components/epson_ef/services.py:72-102"
+      children:
+      - id: '40101'
+        type: function_point
+        name: '幂等注册'
+        description: '多 entry 场景下 setups 会多次调用，用 `has_service` 短路保证只注册一次，后到的条目直接复用已有处理器。'
+        spec: "`if hass.services.has_service(DOMAIN, \"send_key\"): return`（`services.py:40-41`）；注册点 `services.py:72-94`。"
+        constraint: '短路只探测 send_key，若只有 raw_request 存在（外部误删）则两者注册都会跳过——探测粒度与注册粒度不一致。'
+        input: 'hass'
+        process: 'has_service 判定 → async_register 两次'
+        output: '两个服务可用'
+      - id: '40102'
+        type: function_point
+        name: '末条目统一注销'
+        description: '由 unload 的计数判定驱动（`__init__.py:218-220`），注销时逐个检查存在性再移除，避免对不存在的服务报错。'
+        spec: "`for service in (\"send_key\", \"raw_request\"): if hass.services.has_service(...): hass.services.async_remove(...)`（`services.py:100-102`）。"
+        constraint: '注销是「全有或全无」——多 entry 时只要还有一个条目在，两个服务都保留（含事件回传行为）。'
+        input: 'hass'
+        process: '遍历名称 → 存在则移除'
+        output: '服务从服务总线消失'
+    - id: '402'
+      type: function
+      name: '发送遥控按键'
+      description: '`send_key` 服务——把人类可读键名（或纯数字 keycode）翻译成 Android keycode 后经传输层发出，支持多台投影仪时按 media_player 实体定位目标条目。'
+      depends_on: ["401", "201"]
+      node_context:
+        keywords: ["send_key", "keycode_mapping", "entity_targeting"]
+        code_mapping:
+          - "custom_components/epson_ef/services.py:43-54"
+          - "custom_components/epson_ef/services.py:72-82"
+          - "custom_components/epson_ef/const.py:195-219"
+      children:
+      - id: '40201'
+        type: function_point
+        name: '解析目标条目'
+        description: '若给了 entity_id，则经实体注册表反查其 config_entry_id 再从 hass.data 取 API；否则退化为「取 hass.data 中第一个带 api 的条目」。'
+        spec: "`registry.async_get(entity_id)` → `entry_obj.config_entry_id` → `store.get(...)`（`services.py:22-30`）；无 entity_id 时遍历取首个含 `\"api\"` 的字典（`:31-35`）。"
+        constraint: '回退分支在多 entry 下语义含糊（命中顺序取决于字典插入顺序）；entity_id 非注册表实体或无归属条目时抛 `HomeAssistantError`。'
+        input: "`call.data.get(\"entity_id\")`（可能是 list）"
+        process: '注册表反查 → hass.data 定位'
+        output: "`EpsonApi`"
+      - id: '40202'
+        type: function_point
+        name: '键名到键码解析'
+        description: '键名统一大写后查 `KEYCODES` 表；未命中但为纯数字时直接当 keycode；仍无法解析则拒绝执行。'
+        spec: "`key = str(call.data[\"key\"]).upper()`；`KEYCODES.get(key)`；`if keycode is None and key.isdigit(): keycode = int(key)`；否则 `raise HomeAssistantError(f\"Unknown key: {key}\")`（`services.py:48-53`）。"
+        constraint: '不做 keycode 合法性范围校验（任意整数都会发出去），也不区分键是否在当前电源态有效。'
+        input: "`key: str`"
+        process: 'upper → 查表 → 数字兜底'
+        output: "`keycode: int`"
+      - id: '40203'
+        type: function_point
+        name: '下发按键事件'
+        description: '把 keycode 交给传输层的 `send_keyevent`，失败异常直接向上冒泡成服务调用错误。'
+        spec: "`await api.send_keyevent(keycode)`（`services.py:54`）；传输层实现为 `NOTIFY_KEYEVENT` params=键值（`api.py:327-328`）。"
+        constraint: '本层不捕获异常、不重试、不做电源态前置判断——与 `raw_request` 的错误处理策略相反。'
+        input: 'api + keycode'
+        process: '单次请求'
+        output: '服务调用完成（无返回值）'
+      - id: '40211'
+        type: function_spec
+        name: '服务 schema 规格'
+        description: "`{key: str 必填, entity_id: str 可选}`（`services.py:76-81`），字段说明见 `services.yaml:1-11`。entity_id 声明为 `str` 而非 `cv.entity_id`，故 HA 不会校验其为合法实体 ID，也不会接受列表。"
+    - id: '403'
+      type: function
+      name: '透传原生命令'
+      description: '`raw_request` 服务——把任意 pjctl 命令 id 与参数串原样发到设备，结果（含异常文本）通过 `epson_ef_response` 事件广播给自动化，因为 HA 服务调用本身不返回值。'
+      depends_on: ["401"]
+      node_context:
+        keywords: ["raw_request", "command_passthrough", "event_bus", "no_allowlist"]
+        code_mapping:
+          - "custom_components/epson_ef/services.py:56-70"
+          - "custom_components/epson_ef/services.py:83-94"
+      children:
+      - id: '40301'
+        type: function_point
+        name: '无白名单命令透传'
+        description: '命令 id 与 params 都不做枚举校验，直接交给传输层 `request()`，因此该服务的能力上界等于固件能力全集（含所有 CONFIG_SET_*）。'
+        spec: "`command_id = call.data[\"id\"]`；`params = call.data.get(\"params\")`；`await api.request(command_id, params=params)`（`services.py:61-64`）。"
+        constraint: '未使用 `require_admin`（全仓库无该装饰器，`grep -rn require_admin custom_components/` 为空），任何可调服务的 HA 用户/自动化均可下发写命令；README 仅作文字提醒（`README.md:111`）。'
+        input: "`id: str`、`params: str | None`"
+        process: '直接 request，不做预校验'
+        output: '设备原始响应 dict 或错误串'
+      - id: '40302'
+        type: function_point
+        name: '异常折算为错误载荷'
+        description: '任何异常（含编程错误）都被折成 {"error": str(err)}，保证事件一定会被发出而不是让调用方拿到异常。'
+        spec: "`except Exception as err: result = {\"error\": str(err)}`（`services.py:65-66`，带 `noqa: BLE001`）。"
+        constraint: '捕获范围过宽——`KeyError`/`AttributeError` 等编程错误与设备错误在事件里不可区分（见本模块 `risk.md` 技术债务「`services.py:65-66`」条目）。'
+        input: '传输层抛出的任意异常'
+        process: '转错误字典'
+        output: "`{\"error\": \"...\"}`"
+      - id: '40303'
+        type: function_point
+        name: '事件总线回传结果'
+        description: '无论成功失败都向总线发一条 `epson_ef_response`，载荷携带原始 entity_id、命令 id 与响应体，供自动化以 trigger 方式消费。'
+        spec: "`hass.bus.async_fire(f\"{DOMAIN}_response\", {\"entity_id\": entity_id, \"id\": command_id, \"response\": result})`（`services.py:67-70`）。"
+        constraint: '事件无权限过滤、无 correlation id；同一时刻并发多次调用只能靠 `id` 字段区分，响应与请求无法一一配对（见本模块 `risk.md` 技术债务「`services.py:67-70`」条目）。'
+        input: '结果 + 调用上下文'
+        process: 'async_fire'
+        output: '总线事件 `epson_ef_response`'
+      - id: '40311'
+        type: function_spec
+        name: '服务 schema 规格'
+        description: "`{id: str 必填, params: str 可选, entity_id: str 可选}`（`services.py:87-93`）。params 恒为字符串，token 数由传输层按空格切分计算 size（`api.py:163-172`），本层不校验 token 数。"
+    - id: '404'
+      type: function
+      name: '导出诊断包'
+      description: '把 entry 元数据、身份、协调器快照与 API 连接信息整理成一份可下载 JSON，用于排障；刻意不包含 Digest 凭据，且用 `getattr` 读取传输层私有字段。'
+      depends_on: ["101"]
+      node_context:
+        keywords: ["diagnostics", "support_bundle", "secret_redaction", "observability"]
+        code_mapping:
+          - "custom_components/epson_ef/diagnostics.py:12-39"
+      children:
+      - id: '40401'
+        type: function_point
+        name: '组装四段式快照'
+        description: '输出 entry（version/data/options）、identity（base_id/product）、coordinator（成功标志/间隔/data）、api（host/port/nonce 缓存标志）四段。'
+        spec: "结构见 `diagnostics.py:19-38`；数据源 `hass.data.get(DOMAIN, {}).get(entry.entry_id, {})`（`:16`），条目未加载时退化为空 dict 而不是报错。"
+        constraint: "`coordinator.data` 全量导出（含设备原始返回值与 `diag`/`settings` 全部键），体积随诊断轮增长，且包含原始固件版本串等设备信息。"
+        input: 'hass + entry'
+        process: '取运行时字典 → 组装四段'
+        output: '可 JSON 序列化的 dict'
+      - id: '40402'
+        type: function_point
+        name: '凭据排除'
+        description: '凭据不在 entry 里（Digest 用户名/密码硬编码在 const），诊断只输出 host/port 与「nonce 是否已缓存」的布尔，不输出 Authorization 或密码。'
+        spec: "`\"digest_nonce_cached\": getattr(api, \"_auth\", None) is not None`（`diagnostics.py:37`）；`entry.data` 仅含 host/port/name/poll_interval（`config_flow.py:51-53`、`:58-60`）。"
+        constraint: '安全性依赖「凭据不进 entry」这一前提；若未来把凭据写入 entry.data，`dict(entry.data)` 会直接泄露（`diagnostics.py:22`）。'
+        input: '运行时字典'
+        process: '布尔化私有字段'
+        output: '无凭据的诊断载荷'
+      - id: '40411'
+        type: function_constraint
+        name: '私有字段耦合约束'
+        description: '通过 `getattr(api, \"_host\"/\"_port\"/\"_auth\")` 读取传输层私有属性（`diagnostics.py:35-37`），未定义公共只读接口；传输层重命名这些字段会静默退化为 None 而不是报错。'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+#   本模块参与的全局 function 节点 id: 21, 22, 23, 24, 25, 42, 73, 74
+#   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
+#         两者通过上述 id 对齐, 模块边界不因合并而改变。
+# ─────────────────────────────────────────────────────────────────────────────

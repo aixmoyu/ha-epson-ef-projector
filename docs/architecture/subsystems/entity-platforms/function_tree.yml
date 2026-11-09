@@ -1,0 +1,620 @@
+# entity-platforms 模块功能树
+# project: ha-epson-ef-projector
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# scope: custom_components/epson_ef/{media_player,sensor,select,binary_sensor,button,switch,number}.py
+# 说明: 叶子为 function(业务能力), 二级 directory 按平台类别组织; 类名/方法名不入树。
+
+- id: '1'
+  type: directory
+  name: 电源与媒体控制
+  description: 投影仪的开机/待机、启动模式、音量、静音与媒体播放能力；状态真值来自轮询缓存，电源键为盲 toggle 故需先探测。
+  children:
+  - id: '101'
+    type: function
+    name: 开关投影仪
+    description: 通过一次 KEYCODE_POWER 注入把投影仪从待机唤醒或送入待机；动作前后各做一次电源真值探测与确认，同一实例的动作串行执行。
+    depends_on: []
+    node_context:
+      keywords: ["power_toggle", "projector_standby", "probe_first", "power_lock"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:178-199"
+        - "custom_components/epson_ef/media_player.py:139-176"
+        - "custom_components/epson_ef/api.py:221-293"
+    children:
+    - id: '10101'
+      type: function_point
+      name: 动作前探测电源真值
+      description: 发键前调用 probe_state 判定当前是 on 还是 off，已是目标态则直接返回，不发任何按键。
+      spec: 探测失败（设备不可达）时抛 HomeAssistantError 而非继续发键
+      constraint: KEYCODE_POWER 无方向，只能靠探测结果决定是否发键
+      input: 用户/自动化调用 turn_on 或 turn_off
+      process: probe_state → 若 state 已等于目标则 return，否则 send_keyevent(26)
+      output: 一次有向的电源状态变更，或零副作用返回
+    - id: '10102'
+      type: function_point
+      name: 串行化电源动作
+      description: 每实例一把 asyncio.Lock，把 turn_on/turn_off 的"探测+发键+确认"整体包住，避免两个并发动作把设备翻两次。
+      spec: 锁在 __init__ 内创建，作用域为单个媒体播放器实例，不跨 entry
+      input: 并发到来的 turn_on/turn_off 协程
+      process: async with self._power_lock 包裹整个动作序列
+      output: 串行执行的电源动作
+    - id: '10103'
+      type: function_point
+      name: 电源切换确认与回落
+      description: 发键后乐观改写缓存并轮询等待设备进入目标态；10 秒内未确认则记警告并请求一次协调器刷新。
+      spec: 确认超时 _POWER_CONFIRM_TIMEOUT = 10.0 秒
+      process: wait_for_state(target, 10s) → 未确认则 async_request_refresh()
+      output: 缓存与设备一致，或至少触发一次权威回读
+    - id: '10104'
+      type: function_constraint
+      name: 盲切换电源键约束
+      description: 固件只暴露 KEYCODE_POWER（键值 26）的 toggle 语义，不存在独立的开/关命令；任何绕过"先探测"的调用点都可能造成设备与 HA 状态分叉。
+
+  - id: '102'
+    type: function
+    name: 设定启动模式
+    description: 在"节能"与"快速启动"之间切换投影仪待机行为（CONFIG_SET_PJ_STANDBY_MODE），写入后乐观更新并请求刷新确认。
+    depends_on: []
+    node_context:
+      keywords: ["standby_mode", "fast_boot", "pj_standby_mode"]
+      code_mapping:
+        - "custom_components/epson_ef/select.py:116-164"
+        - "custom_components/epson_ef/const.py:27-45"
+        - "custom_components/epson_ef/api.py:317-325"
+    children:
+    - id: '10201'
+      type: function_point
+      name: 中文选项与固件原始值互转
+      description: "节能/快速启动" 与固件 0/1 之间通过 const 的映射函数双向转换，未知值一律返回 None。
+      spec: 未知原始值不上屏（current_option 返回 None），实体属性 raw_value 保留原值供核对
+      input: 固件返回的 standby_mode 字符串或用户选择的选项
+      process: standby_option_to_raw / standby_raw_to_option
+      output: 可显示的选项名或可下发的原始值
+
+  - id: '103'
+    type: function
+    name: 调节音量
+    description: 以固件音量键步进调整投影仪音量，无绝对音量读写通路。
+    depends_on: []
+    node_context:
+      keywords: ["volume_step", "keyevent", "no_absolute_volume"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:201-205"
+        - "custom_components/epson_ef/const.py:204-205"
+    children:
+    - id: '10301'
+      type: function_point
+      name: 音量步进注入
+      description: 分别注入 KEYCODE_VOLUME_UP(24) / KEYCODE_VOLUME_DOWN(25)，每次一步。
+      input: HA 音量加/减动作
+      process: _key(24) / _key(25) → api.send_keyevent
+      output: 音量变化一步
+
+  - id: '104'
+    type: function
+    name: 切换静音状态
+    description: 固件只有静音 toggle 键（164）且无静音状态查询，实体以本地记忆 + RestoreEntity 保持"最后已知静音态"，仅在目标值与本地不同时才发键。
+    depends_on: []
+    node_context:
+      keywords: ["mute_toggle", "restore_state", "no_mute_query"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:207-216"
+        - "custom_components/epson_ef/media_player.py:75-81"
+        - "custom_components/epson_ef/media_player.py:48-50"
+    children:
+    - id: '10401'
+      type: function_point
+      name: 盲切换去重
+      description: 请求值与 _attr_is_volume_muted 相同则直接返回，不发键；不同才发一次 164 并翻转本地值。
+      process: 比较目标态 → send_keyevent(164) → 改 _attr_is_volume_muted → async_write_ha_state()
+      output: 至多一次 toggle 注入
+    - id: '10402'
+      type: function_point
+      name: 重启恢复静音记忆
+      description: 加入 HA 时从上一份 state 的 is_volume_muted 属性恢复本地值，避免重启后误判。
+      spec: 仅当上一次状态属性存在且为 bool 时才恢复；否则沿用类默认值 False
+      input: HA 保存的历史 state
+      process: async_get_last_state().attributes["is_volume_muted"]
+      output: 恢复后的本地静音态
+    - id: '10403'
+      type: function_constraint
+      name: 静音态不可读约束
+      description: 设备侧无静音状态查询，若用户用实体遥控器静音，集成本地记忆会漂移；实体不声明 assumed_state，漂移对用户不可见。
+
+  - id: '105'
+    type: function
+    name: 控制媒体播放
+    description: 向投影仪注入播放/暂停/上一曲/下一曲四个媒体键，供内置播放器场景使用。
+    depends_on: []
+    node_context:
+      keywords: ["media_keys", "play_pause", "keyevent_injection"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:218-228"
+        - "custom_components/epson_ef/const.py:207-211"
+    children:
+    - id: '10501'
+      type: function_point
+      name: 媒体键注入
+      description: 分别注入 126(播放)/127(暂停)/88(上一曲)/87(下一曲)。
+      input: HA 媒体控制动作
+      process: _key(126|127|88|87) → api.send_keyevent
+      output: 一次媒体键事件
+
+- id: '2'
+  type: directory
+  name: 遥控与系统导航
+  description: 以按钮为载体的遥控键注入与固件功能唤起；30 个按钮全部由 BUTTON_DEFS 表驱动，分为按键注入、功能触发、几何步进三类。
+  children:
+  - id: '201'
+    type: function
+    name: 导航投影仪菜单
+    description: 注入主页/返回/菜单/信号源四个 Android 按键，用于在投影仪系统界面内导航。
+    depends_on: []
+    node_context:
+      keywords: ["remote_keys", "keyevent", "menu_navigation"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:18-22"
+        - "custom_components/epson_ef/button.py:136-142"
+    children:
+    - id: '20101'
+      type: function_point
+      name: 按键码注入
+      description: 通过 NOTIFY_KEYEVENT 注入 3(主页)/4(返回)/82(菜单)/243(HDMI1)。
+      constraint: 243 为实验性信号源切换，固件可能忽略；错误以按钮翻译键回显
+      process: api.request("NOTIFY_KEYEVENT", params="3|4|82|243")
+      output: 一次按键事件
+
+  - id: '202'
+    type: function
+    name: 打开固件功能面板
+    description: 唤起投影仪固件内置的功能界面/模式（浮窗设置、手动对焦、手动梯形校正、画面位移、画面缩放、蓝牙音箱模式、错误警告、无图案对焦）。
+    depends_on: []
+    node_context:
+      keywords: ["notify_app", "firmware_panel", "feature_trigger"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:26-47"
+    children:
+    - id: '20201'
+      type: function_point
+      name: 固件面板唤起
+      description: 通过 NOTIFY_APP_* 通知唤起对应固件界面，效果以机身行为为准。
+      constraint: 仅代表"通知已发送"，不代表界面已打开
+      process: api.request("NOTIFY_APP_FLOATING_SETTINGS" 等, params=None)
+      output: 一次固件通知
+
+  - id: '203'
+    type: function
+    name: 触发一键校正与校准
+    description: 触发自动对焦、自动梯形校正、避障校正、墙面颜色自适应、面板对齐、屏幕适配、相机标定、重力传感器标定、智能护眼等一次性固件流程。
+    depends_on: []
+    node_context:
+      keywords: ["auto_correction", "calibration", "one_shot"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:23-25"
+        - "custom_components/epson_ef/button.py:48-64"
+    children:
+    - id: '20301'
+      type: function_point
+      name: 校正流程触发
+      description: 发送 NOTIFY_AUTO_CORRECTION / NOTIFY_OBSTACLE_AVOIDANCE 等通知，其中两条带固定参数 "1 1"（真机实测 SUCCESS）。
+      spec: 带参调用点 params="1 1"（size=2）
+      process: api.request("NOTIFY_AUTO_CORRECTION", params="1 1")
+      output: 一次校正动作
+
+  - id: '204'
+    type: function
+    name: 步进调整画面几何
+    description: 以固定步长调整数字变焦与画面位移（CONFIG_SET_QC 子命令 1/2），每个按钮一次步进。
+    depends_on: []
+    node_context:
+      keywords: ["zoom_step", "shift_step", "set_qc"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:68-79"
+        - "custom_components/epson_ef/const.py:176-177"
+    children:
+    - id: '20401'
+      type: function_point
+      name: 变焦步进
+      description: 放大/缩小各一步，步长 QC_ZOOM_STEP=104，方向由正负号表达。
+      constraint: 几何状态不可读，连续点击无法从界面判断当前位置
+      process: api.request("CONFIG_SET_QC", params="1 104" / "1 -104")
+      output: 画面缩放一步
+    - id: '20402'
+      type: function_point
+      name: 位移步进
+      description: 上/下/左/右各一步，步长 QC_SHIFT_STEP=13，参数为 "2 dx dy"。
+      process: api.request("CONFIG_SET_QC", params="2 0 -13" 等)
+      output: 画面平移一步
+
+  - id: '205'
+    type: function
+    name: 重置画面几何校正
+    description: 一键清除变焦/位移/梯形等全部几何校正（CONFIG_SET_QC 子命令 5），作为几何误操作的逃生口。
+    depends_on: []
+    node_context:
+      keywords: ["geometry_reset", "reset_corrections", "escape_hatch"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:80-82"
+        - "custom_components/epson_ef/api.py:610-618"
+    children:
+    - id: '20501'
+      type: function_point
+      name: 清除全部校正
+      description: 发送 size=1 的 "5" 子命令重置全部几何校正；之后需重新触发自动校正才能重建梯形。
+      constraint: 破坏性动作，无二次确认、无回滚
+      process: api.request("CONFIG_SET_QC", params="5")
+      output: 几何校正归零
+
+- id: '3'
+  type: directory
+  name: 画面设置
+  description: 投影画面与光源的可写设置：光源亮度、投影方式、投影偏好、色温、动态对比度、RGB 色彩增益、自动对比度，以及 6 个 0/1 型自动校正开关。
+  children:
+  - id: '301'
+    type: function
+    name: 调节光源亮度
+    description: 以 50–100（步进 5）设定光源输出百分比，写入后乐观更新设置缓存并请求刷新；待机写入会被固件拒绝并报错。
+    depends_on: []
+    node_context:
+      keywords: ["light_output", "brightness", "set_light_output"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:66-140"
+        - "custom_components/epson_ef/const.py:94-97"
+        - "custom_components/epson_ef/api.py:366-379"
+    children:
+    - id: '30101'
+      type: function_point
+      name: 亮度写后乐观更新
+      description: 写入成功后把 settings["light_output"] 与本地值同时改写，再请求一次协调器刷新，避免界面弹回旧值。
+      process: set_light_output → data["settings"]["light_output"]=str(v) → async_write_ha_state → async_request_refresh
+      output: 界面立即反映新亮度
+    - id: '30102'
+      type: function_point
+      name: 轮询值优先与恢复值兜底
+      description: native_value 优先读协调器 settings["light_output"]，读不到时回退到 RestoreEntity 恢复的本地值。
+      constraint: 待机状态下读通路整段不刷新，界面显示的是末次已知值
+
+  - id: '302'
+    type: function
+    name: 切换投影方式
+    description: 在正投/吊装/背投/吊装背投四档之间切换投影画面方向（CONFIG_GET/SET_PROJECTION）。
+    depends_on: []
+    node_context:
+      keywords: ["projection", "mount_mode", "label_mapping"]
+      code_mapping:
+        - "custom_components/epson_ef/const.py:82-85"
+        - "custom_components/epson_ef/select.py:48-113"
+    children:
+    - id: '30201'
+      type: function_point
+      name: 档位标签映射
+      description: 选项显示中文语义名，raw_value 属性保留固件原始档位；无标签映射的选择器直接显示原始值。
+      spec: 标签与原始值双向字典在构造时建立，未知原始值原样透出
+      process: _raw_to_option / _option_to_raw 双向映射
+      output: 语义化选项 + 原始值属性
+
+  - id: '303'
+    type: function
+    name: 设定投影偏好
+    description: 在"色彩(35)"与"明亮(6)"两种投影偏好之间切换（CONFIG_GET/SET_PICTURE）。
+    depends_on: []
+    node_context:
+      keywords: ["picture_preference", "color_mode", "bright_mode"]
+      code_mapping:
+        - "custom_components/epson_ef/const.py:86-91"
+
+  - id: '304'
+    type: function
+    name: 调整色温
+    description: 在固件色温档位 0/1/2 之间切换，因原始值语义未确认故不给中文标签。
+    depends_on: []
+    node_context:
+      keywords: ["color_temp", "unnamed_option", "raw_value"]
+      code_mapping:
+        - "custom_components/epson_ef/const.py:73-78"
+        - "custom_components/epson_ef/select.py:76-80"
+    children:
+    - id: '30401'
+      type: function_constraint
+      name: 未确认语义不臆造标签
+      description: 机身菜单的"标准/暖色/冷色"走 Android 全局设置，与 pjctl COLOR_TEMP 数值不同源，因此选项只暴露 0/1/2 原始值。
+
+  - id: '305'
+    type: function
+    name: 切换动态对比度
+    description: 在关/正常/高速三档之间切换引擎动态对比度（CONFIG_GET/SET_DYNAMIC_CONTRAST）。
+    depends_on: []
+    node_context:
+      keywords: ["dynamic_contrast", "engine_contrast"]
+      code_mapping:
+        - "custom_components/epson_ef/const.py:79-81"
+
+  - id: '306'
+    type: function
+    name: 设定色彩增益
+    description: 分别设定 R/G/B 三通道增益（0–255）；三通道共享同一条读命令，写入是"读整串→替换单通道→写整串"。
+    depends_on: []
+    node_context:
+      keywords: ["color_gain", "rgb_triple", "read_modify_write"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:304-396"
+        - "custom_components/epson_ef/const.py:185-191"
+        - "custom_components/epson_ef/api.py:432-460"
+    children:
+    - id: '30601'
+      type: function_point
+      name: 三通道共享读值
+      description: 三个实体都从 diag["color_gain"] 的三元组字符串取自己那一位，缺三元组时写入直接报错而不是盲写。
+      constraint: 三元组不完整（≠3 个 token）时视为不可读，禁止写入
+      process: _triple() → 取 channel 位 → 写后回填 diag["color_gain"]
+      output: 单通道新值 + 其余两通道保持不变
+    - id: '30602'
+      type: function_point
+      name: 暴露完整三元组原始值
+      description: 每个通道实体的 raw_value 都返回完整 "R G B" 字符串，便于排障时同时看到另外两个通道（换色偏时对照）。
+      output: raw_value = "R G B"
+    - id: '30603'
+      type: function_constraint
+      name: 并发读改写丢更新约束
+      description: 两个通道并发写时，后写者基于旧的另外两个通道值覆盖整串，可能丢掉先写者的通道值；实体层无锁、无版本校验。
+
+  - id: '307'
+    type: function
+    name: 启用自动对比度
+    description: 开关引擎侧自动对比度（CONFIG_SET_AUTO_CONTRAST）；读通路在 HB71 上 FAIL，实体为纯写 + 本地记忆。
+    depends_on: []
+    node_context:
+      keywords: ["auto_contrast", "write_only", "assumed_state"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:188-246"
+        - "custom_components/epson_ef/api.py:623-632"
+    children:
+    - id: '30701'
+      type: function_constraint
+      name: 写成功不等于效果可见
+      description: 写 0/1 均回 SUCCESS，但实机对比观察不到明显差异，读通路 GET_AUTO_CONTRAST 带参仍 FAIL；实体只声明"已下发"，不声明"已生效"。
+
+  - id: '308'
+    type: function
+    name: 配置自动校正与环境感应开关
+    description: 以 0/1 写回方式开关 6 个固件设置项：自动校正、墙面颜色自适应、移动检测、智能护眼、开机校正、画面遮蔽(vmute)。
+    depends_on: []
+    node_context:
+      keywords: ["config_switch", "binary_setting", "same_value_writeback"]
+      code_mapping:
+        - "custom_components/epson_ef/const.py:53-66"
+        - "custom_components/epson_ef/switch.py:56-117"
+        - "custom_components/epson_ef/coordinator.py:92-96"
+    children:
+    - id: '30801'
+      type: function_point
+      name: 同值回写
+      description: 读到的原始值等于目标值时仍然下发一次写命令，用于把设备拉回与界面一致的状态。
+      process: request(CONFIG_SET_*, params="1"|"0") → settings[suffix]=value
+      output: 设备侧设置与界面一致
+    - id: '30802'
+      type: function_spec
+      name: 后缀三元合一契约
+      description: 表内 suffix 同时充当 coordinator settings 的键、strings.json 的翻译键、unique_id 的后缀（{base_id}-setting-{suffix}）——改一处必须三处同步。
+
+- id: '4'
+  type: directory
+  name: 光学与对焦
+  description: 对焦马达的绝对定位与自动对焦触发，以及工厂测试图案；对焦是全模块唯一带闭环控制的写路径。
+  children:
+  - id: '401'
+    type: function
+    name: 设定对焦位置
+    description: 把对焦马达驱动到 0–264 的绝对位置；固件无绝对定位命令，靠连续移动(MAX/MIN)+定时+OFF+回读的闭环逼近。
+    depends_on: []
+    node_context:
+      keywords: ["focus_position", "closed_loop", "goto_focus"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:223-301"
+        - "custom_components/epson_ef/api.py:544-584"
+        - "custom_components/epson_ef/const.py:105-133"
+    children:
+    - id: '40101'
+      type: function_point
+      name: 闭环绝对定位
+      description: 每轮读 POS、按剩余距离估算脉冲时长、连续移动后必定发 OFF、再回读；进入容差或次数耗尽才停。
+      spec: 容差 3 单位、最多 14 轮、单次脉冲 0.1–2.0 秒、速度按 65 单位/秒估算
+      process: goto_focus(target) → get_focus_position → focus_move_start → sleep → focus_move_stop
+      output: 最终实测位置（可能仍有 ±容差内偏差）
+    - id: '40102'
+      type: function_point
+      name: 位置回写设置缓存
+      description: 定位结束后把实测终值写回 settings["focus_position"]，因为该键只在慢速诊断轮询里刷新，不写回界面会弹回旧位置。
+      process: settings["focus_position"]=str(final) → _attr_native_value=final → async_write_ha_state → async_request_refresh
+      output: 界面显示实测位置
+    - id: '40103'
+      type: function_constraint
+      name: 需唤醒且无并发保护
+      description: POS 读不到（待机）时首轮即失败并抛错；goto_focus 与实体 setter 均无锁，两次并发设目标会交错驱动同一马达。
+
+  - id: '402'
+    type: function
+    name: 触发自动对焦
+    description: 触发一次固件自动对焦流程，含常规与无图案两种模式。
+    depends_on: []
+    node_context:
+      keywords: ["auto_focus", "notify_auto_focus"]
+      code_mapping:
+        - "custom_components/epson_ef/button.py:23-25"
+        - "custom_components/epson_ef/coordinator.py:80-81"
+    children:
+    - id: '40201'
+      type: function_point
+      name: 自动对焦状态与目标值只读暴露
+      description: 诊断轮询用带参子命令读 auto_focus_state / auto_focus_target，仅作为媒体播放器属性暴露，不建独立实体。
+      process: CONFIG_GET_AUTO_FOCUS params="0"/"1" → diag
+      output: 属性 auto_focus_state / auto_focus_target
+
+  - id: '403'
+    type: function
+    name: 显示测试图案
+    description: 通过 MCU 串口透传打开/关闭工厂检验图案（AGPATTERN 01/00），供对焦与光学校正时作参照。
+    depends_on: []
+    node_context:
+      keywords: ["test_pattern", "agpattern", "factory_pattern"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:249-306"
+        - "custom_components/epson_ef/const.py:179-183"
+        - "custom_components/epson_ef/api.py:420-430"
+    children:
+    - id: '40301'
+      type: function_constraint
+      name: 只暴露开关不暴露图案码表
+      description: 完整码表 00–19 的视觉语义未确认，只暴露 01（开）/00（关）两档；图案残留时关闭开关即恢复。
+
+- id: '5'
+  type: directory
+  name: 环境光
+  description: 氛围灯的开关、亮度与光效模式；三类写通路共用 CONFIG_SET_AMBIENT_LIGHT，读通路在 HB71 上全部 FAIL，故全部为乐观状态。
+  children:
+  - id: '501'
+    type: function
+    name: 开关氛围灯
+    description: 分别控制氛围灯本体、开机自动光效、触控面板灯三路灯效的开关。
+    depends_on: []
+    node_context:
+      keywords: ["ambient_light", "welcome_light", "touch_light"]
+      code_mapping:
+        - "custom_components/epson_ef/switch.py:120-185"
+        - "custom_components/epson_ef/const.py:135-142"
+        - "custom_components/epson_ef/api.py:387-398"
+    children:
+    - id: '50101'
+      type: function_point
+      name: 按子索引拼写参数
+      description: kind 3 写成 "3 <0|1> 48"（48 为固件常量），kind 4/5 写成 "<kind> <0|1>"。
+      spec: kind=3 带第三个恒等参数 48；kind 4/5 只有两个 token
+      process: api.set_ambient_light(kind, on)
+      output: 一路灯效开/关
+    - id: '50102'
+      type: function_point
+      name: 写后乐观翻转与重启恢复
+      description: 写入成功才翻转本地 _attr_is_on，并在加入 HA 时从上一份 state 恢复；实体声明 assumed_state 提示状态为假设值。
+      process: set_ambient_light → 成功 → _attr_is_on=on → async_write_ha_state
+      output: 界面状态随写入变化
+
+  - id: '502'
+    type: function
+    name: 调节氛围灯亮度
+    description: 以 0–100 的 UI 百分比设定氛围灯亮度，内部按 ×2.55 映射到固件 0–255。
+    depends_on: []
+    node_context:
+      keywords: ["ambient_brightness", "ui_scale", "write_only"]
+      code_mapping:
+        - "custom_components/epson_ef/number.py:399-458"
+        - "custom_components/epson_ef/const.py:152-156"
+        - "custom_components/epson_ef/api.py:400-409"
+    children:
+    - id: '50201'
+      type: function_point
+      name: UI 值与固件值线性换算
+      description: 固件亮度 0–255，UI 0–100，按 AMBIENT_BRIGHTNESS_FW_SCALE(2.55) 换算并在写入前 clamp 到 0–255。
+      process: fw = clamp(round(pct * 2.55)) → params "9 <fw> 48"
+      output: 一次亮度写入
+
+  - id: '503'
+    type: function
+    name: 切换氛围灯光效模式
+    description: 在四个固件光效槽（MODE1..4 = 3..6）之间切换；槽 11 是小程序临时预览配置，故意不暴露。
+    depends_on: []
+    node_context:
+      keywords: ["ambient_mode", "effect_slot", "optimistic"]
+      code_mapping:
+        - "custom_components/epson_ef/select.py:167-219"
+        - "custom_components/epson_ef/const.py:157-163"
+    children:
+    - id: '50301'
+      type: function_constraint
+      name: 读通路不可用限制可选集
+      description: GET_AMBIENT_LIGHT 各子索引在本机全部 FAIL，故只提供"写"与本地记忆；模式档位按现场分析光效槽映射，无法回读校验。
+
+- id: '6'
+  type: directory
+  name: 诊断与只读
+  description: 只读实体的展示语义：灯光累计时长、投射距离、在线连通性，以及媒体播放器承载的扩展诊断属性。
+  children:
+  - id: '601'
+    type: function
+    name: 显示灯光累计时长
+    description: 展示光源累计点亮小时数（仅在唤醒时可读），并标记该读数是否为待机时的末次实测值。
+    depends_on: []
+    node_context:
+      keywords: ["light_hours", "lamp_usage", "stale_flag"]
+      code_mapping:
+        - "custom_components/epson_ef/sensor.py:57-83"
+        - "custom_components/epson_ef/coordinator.py:139-144"
+    children:
+    - id: '60101'
+      type: function_point
+      name: 陈旧标记
+      description: 属性 stale 由 state != "on" 推导，measured_at 记录最后一次真正读到的时刻，属性 raw_extra 保留第二个固件读数。
+      process: stale = (coordinator.data["state"] != "on")
+      output: 时长值 + stale/measured_at/raw_extra 属性
+    - id: '60102'
+      type: function_spec
+      name: 读数跨周期结转规格
+      description: 协调器在待机轮次把 light_hours/light_extra/light_measured_at 原样结转，只新增时间戳不改数值，保证"关机不丢读数"。
+
+  - id: '602'
+    type: function
+    name: 显示投射距离
+    description: 展示镜头到墙面的实测距离（固件返回毫米，实体以米呈现，毫米原值放属性）。
+    depends_on: []
+    node_context:
+      keywords: ["distance", "mm_to_m", "diagnostic_entity"]
+      code_mapping:
+        - "custom_components/epson_ef/sensor.py:88-120"
+        - "custom_components/epson_ef/coordinator.py:64"
+    children:
+    - id: '60201'
+      type: function_point
+      name: 单位换算与原始值保留
+      description: 毫米除以 1000 保留 3 位小数作为状态值，distance_mm 与 stale 作为属性。
+      process: round(float(raw)/1000.0, 3)
+      output: 以米为单位的距离
+
+  - id: '603'
+    type: function
+    name: 监测投影仪在线状态
+    description: 以 binary_sensor 暴露"投影仪 HTTP API 是否应答"，供离线检测自动化使用；该实体永不 unavailable，以便能报 off。
+    depends_on: []
+    node_context:
+      keywords: ["connectivity", "always_available", "offline_detection"]
+      code_mapping:
+        - "custom_components/epson_ef/binary_sensor.py:29-56"
+        - "custom_components/epson_ef/coordinator.py:42-45"
+    children:
+    - id: '60301'
+      type: function_constraint
+      name: 可用性反转约束
+      description: available 恒返回 True，is_on 才跟随 coordinator.last_update_success；若照搬其它实体的 available 覆写，该传感器会在离线时消失而无法报告离线。
+
+  - id: '604'
+    type: function
+    name: 查看投影仪扩展诊断信息
+    description: 由媒体播放器集中承载 20 余项只读属性（固件版本、色彩增益、自动对焦状态、传感器读数与 4 项可写设置的当前值），便于单点排障。
+    depends_on: []
+    node_context:
+      keywords: ["extra_attributes", "diagnostics_bundle", "support"]
+      code_mapping:
+        - "custom_components/epson_ef/media_player.py:108-136"
+        - "custom_components/epson_ef/coordinator.py:59-83"
+    children:
+    - id: '60401'
+      type: function_point
+      name: 诊断属性聚合
+      description: 把 diag 的 16 个键与 settings 的 4 个键按白名单搬进实体属性，仅搬运非 None 项。
+      constraint: 属性白名单硬编码在实体里，新增 diag 键不会自动暴露
+      output: 实体属性字典
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+#   本模块参与的全局 function 节点 id: 133, 134, 41, 42, 43, 44, 51, 52, 53, 54, 55, 56, 61, 62, 71, 72, 73
+#   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
+#         两者通过上述 id 对齐, 模块边界不因合并而改变。
+# ─────────────────────────────────────────────────────────────────────────────

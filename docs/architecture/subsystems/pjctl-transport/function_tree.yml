@@ -1,0 +1,354 @@
+# ════════════════════════════════════════════════════════════════════════════
+# 模块功能树 — pjctl-transport
+# project: "ha-epson-ef-projector"
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# 说明: 节点名为「业务能力」，不含 EpsonApi/request/probe_state/goto_focus 等代码名。
+#       证据一律相对仓库根。校验: scripts/validate-function-tree.mjs
+# ════════════════════════════════════════════════════════════════════════════
+- id: '1'
+  type: directory
+  name: 固件通信
+  description: 与投影仪内建 WebApi（pjctl over HTTP）建立并维持可寻址的加密凭据会话，负责把业务命令封装成固件可接受的请求体，并把固件的存活/待机形态翻译成本模块之外可消费的状态语义。
+  children:
+  - id: '10'
+    type: function
+    name: 建立摘要认证会话
+    description: 首次请求被动接收 401 挑战，解析 nonce/realm/qop 并缓存；此后每条请求携带 Digest 头并递增 nonce-count；仅在服务端轮换 nonce 或传输层失败时重建。避免每条命令多付一次 401 往返。
+    depends_on: []
+    node_context:
+      keywords: ["digest_auth", "nonce_cache", "challenge_parse", "credential"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:99-145"
+        - "custom_components/epson_ef/api.py:200-204"
+        - "custom_components/epson_ef/const.py:15-19"
+    children:
+    - id: '1001'
+      type: function_point
+      name: 解析并缓存认证挑战
+      description: 从 WWW-Authenticate 头中用正则抽取 nonce、realm、qop 三个字段，缺 nonce 即判定挑战畸形并拒绝缓存。
+      spec: realm 缺失时回退到契约常量 DIGEST_REALM；qop 缺失时回退 "auth"；缓存结构为 (nonce, realm, qop) 三元组。
+      constraint: 只认 nonce；challenge 中无 nonce 时返回 False，调用方必须抛错而不是继续匿名重试。
+      input: 401 响应头 `WWW-Authenticate`
+      process: 三个正则分别抓取 nonce/realm/qop，写入实例字段并清零计数器（`api.py:101-113`）
+      output: 布尔值（挑战是否可用）+ 缓存的认证三元组
+    - id: '1002'
+      type: function_point
+      name: 递增 nonce 计数并生成摘要头
+      description: 每条请求在构造头之前同步自增计数器，格式化为 8 位十六进制 nc，配合随机 cnonce 与 MD5 计算 response，拼出完整 Digest Authorization 头。
+      spec: 摘要算法固定 MD5（`algorithm="MD5"`）；有 qop 时使用 `qop/nc/cnonce` 三元组参与哈希，无 qop 时退化为 RFC2069 两段式哈希。
+      constraint: nc 必须在同步代码里自增（无 await），否则并发协程可能重放同一 nc。
+      input: HTTP 方法、请求 URI、缓存的认证三元组
+      process: nc+=1 → md5(user:realm:password) → md5(method:uri) → 按 qop 分支合成 response（`api.py:119-145`）
+      output: '`Digest username=..., nonce=..., uri=..., response=...` 头字符串；无缓存时返回 None'
+    - id: '1003'
+      type: function_point
+      name: 失效后重建认证
+      description: 超时或任意客户端传输错误都会清空缓存三元组并清零 nc，使下一条请求重新走 401 挑战；这是"缓存不可信即丢弃"的保守策略。
+      constraint: 清缓存发生在单条协程内，但状态是实例共享的——任一协程失败会连带清掉其他协程正在使用的 nonce（见 risk R-T04）。
+      input: 超时 / ClientError
+      process: '`_clear_auth()` 置 None + nc=0，然后抛出归一化异常（`api.py:207-214`）'
+      output: 空认证状态
+    - id: '1011'
+      type: function_constraint
+      name: 单次 401 重试上限
+      description: 每条命令最多重试一次：仅 attempt==0 的 401 会刷新挑战并 continue；attempt==1 仍 401 则按普通 HTTP 错误抛出，绝不无限重试（`api.py:180`, `:200-204`, `:205-206`）。
+    - id: '1012'
+      type: function_spec
+      name: 端点与凭据由固件固定
+      description: URL 为 `http://{host}:{port}/api/pjctl`（`api.py:79`），凭据为固件内置常量（`const.py:15-19`）；配置流只允许改 host/port，不允许改凭据。
+  - id: '11'
+    type: function
+    name: 收发原生命令
+    description: 把「命令 ID + 可选参数串」封装为 `{id, size, params}` JSON POST 到唯一端点，解析 `resultCode` 决定成功/失败，并把 aiohttp 的传输层异常翻译成本模块的四类异常。是全部 34 个业务命令的唯一出口。
+    depends_on:
+      - "10"
+    node_context:
+      keywords: ["pjctl", "request_envelope", "size_token", "result_code", "timeout"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:147-216"
+        - "custom_components/epson_ef/api.py:160-175"
+        - "custom_components/epson_ef/const.py:14"
+    children:
+    - id: '1101'
+      type: function_point
+      name: 按 token 数封装请求体
+      description: size 字段是参数串按空格切分后的 token 个数，而不是字节长度；params 缺省时 size=0 且不发送 params 键。错算 size 会让 MCU 以 FAIL 拒绝写入。
+      spec: '`size = 0 if params is None else len(params.split(" "))`（`api.py:171`）；实测对照 `SET_LIGHT_OUTPUT size=1 params="100"`、`SET_REFRESH size=2 params="0 4"`（`api.py:163-170`）。'
+      constraint: 切分用单空格；参数串含连续空格时 token 数会被高估，空串会被算成 1 个 token。
+      input: cmd_id + 可选 params
+      process: 组 dict → 命中 401 时重试 → 200 时解析 JSON（`api.py:161-199`）
+      output: 解析后的响应 dict（含 response/configResultCode）
+    - id: '1102'
+      type: function_point
+      name: 区分四类失败语义
+      description: 把「网络不可达 / 命令被固件拒绝 / 命令超时 / 其它协议错误」拆成四个异常类型，使上层能分别决定降级策略。
+      spec: '`EpsonApiUnavailable`（连接失败，市电断/网络断）、`EpsonApiCommandFailed`（端点应答但 resultCode!=0）、`EpsonApiTimeout`（端点存活但命令未答完）、`EpsonApiError`（bad JSON / HTTP 非 200/401）。'
+      constraint: 异常类型是上层降级的唯一依据；把 Timeout 混成 Unavailable 会让"活着但卡住"被误判为断电。
+      input: aiohttp 异常 / HTTP 状态码 / resultCode
+      process: 分支映射（`api.py:195-214`）
+      output: 四类异常之一或响应 dict
+    - id: '1103'
+      type: function_point
+      name: 覆盖单次请求超时
+      description: 调用方可传入 timeout 覆盖默认 10s，用于深待机下可能长时间不答的引擎查询（探针把该查询压到 5s）。
+      spec: '`total = timeout if timeout is not None else 10.0`（`api.py:160`），每条请求新建 `ClientTimeout(total=total)`（`api.py:188`）。'
+      constraint: 模块级常量 `_TIMEOUT`（`api.py:37`）已定义但从未被使用，属残留。
+      input: timeout 秒数或 None
+      process: 覆盖默认值后传入 session.post
+      output: 该条请求的实际超时预算
+    - id: '1111'
+      type: function_constraint
+      name: 端点与传输明文
+      description: 单一端点 `POST /api/pjctl`（`api.py:79`, `:186-189`）；scheme 硬编码 http，无 TLS，Digest-MD5 凭据与响应在明文信道传输（见 risk R-T07）。
+    - id: '1112'
+      type: function_spec
+      name: 请求-响应单次往返模型
+      description: 无长连接、无订阅、无重试退避；每条命令一次 POST 一次 JSON 解析（`api.py:186-199`）。重试仅限 401 换 nonce，不覆盖网络错误。
+  - id: '12'
+    type: function
+    name: 判定电源状态
+    description: 用「必然应答的存活探针 + 仅唤醒态成功的引擎查询」两级结构判定 on/off，并把待机形态（普通待机 FAIL / 深待机断连或超时）统一归一化为 off；另提供限时确认目标状态的能力供电源流程使用。
+    depends_on:
+      - "11"
+    node_context:
+      keywords: ["liveness_probe", "standby_detection", "state_normalization", "confirm"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:221-293"
+        - "custom_components/epson_ef/coordinator.py:42-49"
+    children:
+    - id: '1201'
+      type: function_point
+      name: 双重探针识别待机形态
+      description: 先用 CONFIG_GET_PRODUCT_NAME 证明端点活着（任何电源态都应答），再用 CONFIG_GET_LIGHT_TIME 作唤醒旗标：成功即 on 并带回灯时；FAIL/超时/断连一律 off。
+      spec: 唤醒判定可复核（verify=True）时对 FAIL 重试一次，间隔 1.5s，用于电源切换瞬态；verify=False 时只查一次（`api.py:252-264`）。
+      constraint: 存活探针一旦失败即抛 Unavailable，不允许继续进第二步。
+      input: 无（可选 verify 开关）
+      process: liveness → 引擎查询（timeout=5.0）→ 解析 "hours extra"（`api.py:236-275`）
+      output: '`("on", (hours, extra|None))` 或 `("off", None)`'
+    - id: '1202'
+      type: function_point
+      name: 归一化不可达与命令失败
+      description: 存活探针的 Timeout 被显式改写成 Unavailable，避免"断电但 TCP 无响应"被上层当成"活着但卡住"；而第二步引擎查询的任何失败（Timeout/Unavailable/CommandFailed）都收敛为 off，绝不上抛为不可达。
+      constraint: 归一化方向是单向的（Timeout→Unavailable，引擎失败→off）；反向重分类会破坏上层降级逻辑。
+      input: 存活探针异常 / 引擎查询异常
+      process: '`except EpsonApiTimeout → raise EpsonApiUnavailable`（`api.py:240-246`）；`except (Timeout, Unavailable) → return "off"`（`api.py:258-259`）；`except CommandFailed → 重试或 off`（`api.py:260-264`）'
+      output: 单一确定的 (state, light) 二元组
+    - id: '1203'
+      type: function_point
+      name: 限时确认目标状态
+      description: 以 deadline 反复探测直到命中目标状态，用于开关机后确认设备真的完成迁移；任何 API 异常直接判"未确认"返回 False，由调用方回落协调器刷新。
+      spec: 默认 10s（`api.py:279`），每次探测间隔 1.0s，且探测一律用 verify=False 以压低成本（`api.py:286`）。
+      constraint: 超时不是硬上限——检查顺序是"先探测、后比 deadline"，且探测固定用 verify=False（2 条 HTTP，最坏 10s+5s=15s），因此实际耗时可能远超 timeout_s（见 risk R-T06）。
+      input: 目标状态字符串 + 超时秒数
+      process: 循环 probe → 命中即 True → 过 deadline 即 False → sleep(1.0)（`api.py:282-293`）
+      output: bool（是否在预算内观察到目标态）
+- id: '2'
+  type: directory
+  name: 设备能力封装
+  description: 把固件命令 ID 及其子索引参数固化成有语义的业务方法：读类方法失败一律降级为 None，写类方法失败上抛异常；覆盖读数、设置、几何调整与对焦定位四类能力。
+  children:
+  - id: '20'
+    type: function
+    name: 查询设备读数
+    description: 把 CONFIG_GET_* 的原始响应串解析成带类型的业务值（产品名、序列号、启动模式、灯时、距离、亮度、色彩增益、刷新定时器、对焦行程/位置、自动对焦目标）；解析失败或命令在当前电源态不可用时返回 None 而不是抛错。
+    depends_on:
+      - "11"
+    node_context:
+      keywords: ["query", "read_helper", "parse_raw", "none_on_failure"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:295-351"
+        - "custom_components/epson_ef/api.py:432-448"
+        - "custom_components/epson_ef/api.py:466-514"
+        - "custom_components/epson_ef/api.py:634-656"
+    children:
+    - id: '2001'
+      type: function_point
+      name: 读取设备身份
+      description: 产品名用于可达性判定与设备型号展示；序列号用作跨 DHCP 变更的稳定身份，固件仅在 params="1" 子索引下应答，无参数时返回空串。
+      spec: 三者（产品名/序列号/启动模式）均在失败时返回 None，由上层决定回退到 host:port 身份或沿用旧值。
+      constraint: 序列号为空串时也必须归一化为 None，不能把 "" 当有效身份。
+      input: 无
+      process: request → `(data["response"] or "").strip() or None`（`api.py:295-315`）
+      output: str | None
+    - id: '2002'
+      type: function_point
+      name: 读取光源与投射读数
+      description: 灯时（小时 + 可选附加计数）在待机时故意以 CommandFailed 上抛，便于调用方区分"读不到"与"值为 0"；投射距离、亮度、刷新定时器、色彩增益走统一的容错读路径。
+      spec: 灯时缺 token 时抛 `EpsonApiCommandFailed("empty light time")`（`api.py:334-335`）；色彩增益要求恰好 3 个 token，否则 None（`api.py:441-447`）。
+      constraint: 亮度解析用 `int(float(...))` 以容忍 "55.0" 这类固件返回（`api.py:372`）。
+      input: 无（亮度固定 params="0" 子索引）
+      process: get_raw → split → 类型转换，异常吞掉返回 None（`api.py:330-378`）
+      output: int/tuple/float | None
+    - id: '2003'
+      type: function_point
+      name: 读取对焦与自动对焦读数
+      description: 对焦行程取 CONFIG_GET_FOCUS "RANGE"（要求恰好 2 token），当前位置取 "POS"；自动对焦状态/目标取 CONFIG_GET_AUTO_FOCUS 的 "0"/"1" 子命令（无参数查询会挂起 HTTP 线程，带参才快速返回）。
+      spec: 行程格式 "min max"（HB71 实测 "0 264"）；目标位置为整数（HB71 实测 196）。
+      constraint: 这些命令只在唤醒态有效，待机返回 None；不重试、不退避。
+      input: 无
+      process: get_raw(params="RANGE"/"POS"/"0"/"1") → 解析（`api.py:490-514`, `:634-656`）
+      output: tuple[int,int] | int | str | None
+    - id: '2011'
+      type: function_constraint
+      name: 读失败一律降级为 None
+      description: 除灯时外，全部读方法捕获 `EpsonApiError` 并返回 None（`api.py:298-299`, `:313-314`, `:347-351`）；语义是"当前电源态下不可用"，而不是"值为空"。上层据此做 carry-forward 而不是覆盖旧值（`coordinator.py:128-132`）。
+    - id: '2012'
+      type: function_spec
+      name: 语义化命名与子索引固化
+      description: 每个方法把命令 ID 与子索引参数固化在调用点（如 "0"/"1"/"RANGE"/"POS"/"POS"），不把原始命令串泄漏给平台层；命令字面量不与 const.py 共享（api 21 个 CONFIG_* 字面量，const 20 个，交集仅 PICTURE 两条）。
+  - id: '21'
+    type: function
+    name: 写入设备设置
+    description: 把用户意图转成 CONFIG_SET_* / NOTIFY_* 写命令；有读通路的项可回读校验，无读通路的项（氛围灯、自动对比度、测试图案）只能单向写并由实体侧承担乐观状态。写失败一律上抛，绝不静默吞掉。
+    depends_on:
+      - "11"
+    node_context:
+      keywords: ["write", "set_command", "optimistic", "dangerous_command_guard"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:324-328"
+        - "custom_components/epson_ef/api.py:376-430"
+        - "custom_components/epson_ef/api.py:449-488"
+        - "custom_components/epson_ef/api.py:623-632"
+    children:
+    - id: '2101'
+      type: function_point
+      name: 下发按键与模式写入
+      description: 遥控键通过 NOTIFY_KEYEVENT 注入 Android keycode；启动模式、投影偏好、光源亮度走对应 CONFIG_SET_*；这些写入成功即返回 None，失败抛异常。
+      spec: 按键 keycode 先 `int()` 再 `str()`，避免把 bool/浮点塞进参数串（`api.py:328`）。
+      constraint: 无幂等保护、无写前校验；重复下发完全依赖固件侧行为。
+      input: keycode / 原始档位字符串 / 0–100 亮度
+      process: request(cmd, params=...)（`api.py:324-328`, `:376-378`, `:384-385`）
+      output: None（成功）或异常
+    - id: '2102'
+      type: function_point
+      name: 写入无读通路设置
+      description: 氛围灯开关（kind 3/4/5）、氛围灯亮度（"9 <0-255> 48"，UI 0–100 线性 ×2.55 且钳制到 0–255）、光效模式（"1 <mode> 48"）、自动对比度（"1"/"0"）均为纯写命令；固件 GET 侧在本机全部 FAIL，故调用方必须自行维持状态。
+      spec: kind==3 的参数格式为 `"3 <0|1> 48"`，其余 kind 为 `"<kind> <0|1>"`（`api.py:394-397`）；亮度钳制 `max(0, min(255, round(ui * 255/100)))`（`api.py:408`）。
+      constraint: 写入成功不代表设备生效，模块内没有任何回读校验路径。
+      input: kind/on|off、UI 百分比、模式槽位、on|off
+      process: 拼参数串后 request（`api.py:387-418`, `:623-632`）
+      output: None 或异常
+    - id: '2103'
+      type: function_point
+      name: 收敛危险写入面
+      description: 同一命令族里存在会破坏用户配置或直接关机的参数变体，本模块只实现安全变体：刷新定时器只发 "0 <小时>"（"1" 是"立即开始刷新并关机"）、氛围灯从不发 "255"（恢复出厂会清光效）、光效模式只用 3–6（11 是临时预览槽）、ESCVP 只透传 AGPATTERN 01/00。
+      spec: '`SET_REFRESH params=f"0 {hours}"`（`api.py:488`）；氛围灯三个写方法只产生 "3/4/5 …"/"9 … 48"/"1 … 48"（`api.py:394-418`）；测试图案仅 `TEST_PATTERN_ON/OFF`（`api.py:428-430`, `const.py:182-183`）。'
+      constraint: 约束靠"不实现"而非运行时校验；`request()` 是公开方法，任意调用方仍可绕过（见 risk R-T08）。
+      input: 小时数 / kind / 模式槽位 / bool
+      process: 参数模板化，危险字面量在模块内不存在
+      output: 仅安全参数变体
+    - id: '2111'
+      type: function_constraint
+      name: 写失败必须上抛
+      description: 写方法不捕获异常（区别于读方法），由平台层翻译成 HomeAssistantError（如 `number.py:290-295`, `switch.py:172-177`）。静默吞掉会让用户以为设置已生效。
+  - id: '22'
+    type: function
+    name: 调整画面几何
+    description: 通过 CONFIG_SET_QC 的子命令首 token 把变焦、位移、整体重置三类几何操作暴露为有语义的步进方法；每步位移量由契约常量固定，保证可逆。
+    depends_on:
+      - "11"
+    node_context:
+      keywords: ["geometry", "zoom", "shift", "reset", "set_qc"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:590-618"
+        - "custom_components/epson_ef/const.py:165-177"
+    children:
+    - id: '2201'
+      type: function_point
+      name: 步进变焦
+      description: 子命令 "1 <±104>"，正向放大（四角外扩）、反向缩小；实测正反各一步可精确回到 GET_QC 的八 token 基线。
+      spec: 步长 104（`const.py:176`），方向由符号决定（`api.py:597`）。
+      constraint: 不包裹调整模式 "4 1"——真机验证非必需。
+      input: direction（≥0 放大）
+      process: '`params=f"1 {step}"`（`api.py:598`）'
+      output: None 或异常
+    - id: '2202'
+      type: function_point
+      name: 步进位移
+      description: 子命令 "2 <dx> <dy>"，单步 13 单位，+x 向右、+y 向下；语义单位（步）与固件单位（13）在方法内换算。
+      spec: '`dx * QC_SHIFT_STEP`、`dy * QC_SHIFT_STEP`（`api.py:606-608`, `const.py:177`）。'
+      constraint: 不校验 dx/dy 范围，也不限制单次调用步数。
+      input: dx, dy（整数步）
+      process: 乘法换算后拼接三 token 参数串
+      output: None 或异常
+    - id: '2203'
+      type: function_point
+      name: 重置几何校正
+      description: 子命令 "5" 清除变焦/位移/四角/梯形全部校正状态，是误操作的逃生口；重置后可由自动校正按钮重建梯形。
+      spec: 单 token 参数 "5"（`api.py:618`）。
+      constraint: 破坏性操作且不返回旧值，不可撤销。
+      input: 无
+      process: request("CONFIG_SET_QC", params="5")
+      output: None 或异常
+  - id: '23'
+    type: function
+    name: 定位对焦马达
+    description: 固件没有"直接设置位置 X"的命令，因此用连续移动（MAX/MIN）加"按剩余距离定时 → 停止 → 回读位置"的闭环把马达送到绝对目标；每轮都重新测量，误差收敛到容差内或耗尽尝试预算。
+    depends_on:
+      - "11"
+      - "20"
+    node_context:
+      keywords: ["focus", "closed_loop", "pulse", "motor_safety", "convergence"]
+      code_mapping:
+        - "custom_components/epson_ef/api.py:516-584"
+        - "custom_components/epson_ef/const.py:105-133"
+    children:
+    - id: '2301'
+      type: function_point
+      name: 按剩余距离估算脉冲
+      description: 每轮先回读当前位置，算出相对目标的剩余量，用实测速度 65 单位/秒换算成连续移动时长；方向由剩余量符号决定。
+      spec: '`duration = |remaining| / FOCUS_TRAVEL_UNITS_PER_SEC`（`api.py:570`）。'
+      constraint: 速度是常量近似值，未按电源态或温度自适应；实际速度偏差靠下一轮回读补偿。
+      input: 目标位置、当前实测位置
+      process: get_focus_position → remaining → duration（`api.py:562-572`）
+      output: 秒数
+    - id: '2302'
+      type: function_point
+      name: 钳制脉冲时长
+      description: 时长被夹在 [0.10s, 2.0s]：短距离不至于抖动，长距离不至于一冲到底。
+      spec: '`max(FOCUS_MIN_PULSE_S, min(FOCUS_MAX_PULSE_S, duration))`（`api.py:571`）；下界 0.10s、上界 2.0s（`const.py:126-127`）。'
+      constraint: 下界 0.10s × 65 单位/秒 = 6.5 单位，大于容差带 2×3=6 单位，目标落在特定窄带时可能来回越界（见 risk R-T02）。
+      input: 原始估算时长
+      process: 双端 clamp
+      output: '[0.1, 2.0] 内的秒数'
+    - id: '2303'
+      type: function_point
+      name: 保证脉冲后停止马达
+      description: 停止命令放在 try/finally 的 finally 中，即使休眠被取消（HA 关停）也必定下发 OFF，避免马达持续走到端点；OFF 自身失败只记 warning，不掩盖原始异常。
+      constraint: finally 内 `await focus_move_stop()` 未用 `asyncio.shield`，二次取消仍可能跳过 OFF（见 risk R-T03）。
+      input: 移动中的马达
+      process: 'try: sleep(duration) finally: try: OFF except: log warning（`api.py:573-582`）'
+      output: 马达停止 + 可能的 warning 日志
+    - id: '2304'
+      type: function_point
+      name: 闭环收敛判定
+      description: 每轮开头判断 |目标−当前位置| ≤ 容差即成功返回当前实测位置；位置读不到则立即返回 None（不猜测、不盲走）。
+      spec: 容差 3（`const.py:129`，注释说明固件 POS 分辨率 1、留 2 单位裕量）。
+      constraint: 返回的是"实测位置"而非"目标值"；调用方必须自己判断是否真的到位（`number.py:293-297` 对 None 抛错，但对"到位但有残差"不做二次校验）。
+      input: 目标位置
+      process: '`if abs(remaining) <= tol: return position`（`api.py:566-567`）'
+      output: 实测位置 int，或 None
+    - id: '2305'
+      type: function_point
+      name: 耗尽预算返回实测值
+      description: 尝试次数用尽后不再抛错，而是再读一次位置返回，把"没收敛"的事实以数据形式交给调用方。
+      spec: 最多 14 次尝试（`const.py:131`），每轮之间固定静置 0.45s（`const.py:133`）。
+      constraint: 返回值不携带"是否收敛"的标志位，调用方无法区分"精确到位"与"预算耗尽"。
+      input: 已完成的尝试轮次
+      process: 循环结束后 `return await self.get_focus_position()`（`api.py:584`）
+      output: 最终实测位置 int | None
+    - id: '2311'
+      type: function_constraint
+      name: 固件无绝对定位命令
+      description: 该固件不提供"设置位置 X"，只有 INC/DEC 单步与 MIN/MAX 连续移动（`const.py:108-118` 记录真机实测：换向后首步 ±10、同向后续仅 ±1）。因此绝对定位只能闭合在客户端，不能下推给固件。
+    - id: '2312'
+      type: function_spec
+      name: 目标值不做行程钳制
+      description: 本方法只做 `int(target)`，不按 0–264 行程做边界校验（`api.py:565`）；行程约束由实体层的 `FOCUS_MIN/FOCUS_MAX`（`number.py:237-238`）承担，绕过实体的直接调用可让马达冲向端点。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+#   本模块参与的全局 function 节点 id: 10, 11, 12, 131, 132, 133, 134
+#   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
+#         两者通过上述 id 对齐, 模块边界不因合并而改变。
+# ─────────────────────────────────────────────────────────────────────────────

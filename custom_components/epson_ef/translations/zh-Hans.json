@@ -1,0 +1,222 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Epson EF Projector",
+        "description": "通过投影仪内置的 pjctl HTTP API 控制(固件自带,无需开启任何调试选项)。请填写投影仪的局域网 IP 地址。",
+        "data": {
+          "host": "投影仪 IP 地址",
+          "port": "API 端口",
+          "name": "名称",
+          "poll_interval": "状态轮询间隔(秒)"
+        }
+      },
+      "reconfigure": {
+        "title": "重新配置 Epson EF Projector",
+        "description": "投影仪 IP 地址变化后,在这里更新连接信息(实体 ID 与历史记录保持不变)。",
+        "data": {
+          "host": "投影仪 IP 地址",
+          "port": "API 端口"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "连接失败:请确认投影仪已通电并与 HA 在同一网络,IP 地址填写正确。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Epson EF Projector 设置",
+        "data": {
+          "poll_interval": "状态轮询间隔(秒)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "light_hours": {
+        "name": "灯光累计时长"
+      },
+      "distance": {
+        "name": "测距"
+      }
+    },
+    "number": {
+      "light_output": {
+        "name": "光源亮度"
+      },
+      "refresh_timer": {
+        "name": "刷新定时器"
+      },
+      "focus_position": {
+        "name": "对焦位置"
+      },
+      "color_gain_red": {
+        "name": "红色增益"
+      },
+      "color_gain_green": {
+        "name": "绿色增益"
+      },
+      "color_gain_blue": {
+        "name": "蓝色增益"
+      },
+      "ambient_brightness": {
+        "name": "氛围灯亮度"
+      }
+    },
+    "select": {
+      "standby_mode": {
+        "name": "启动模式"
+      },
+      "color_temp": {
+        "name": "色温"
+      },
+      "dynamic_contrast": {
+        "name": "动态对比度"
+      },
+      "projection": {
+        "name": "投影方式"
+      },
+      "picture_preference": {
+        "name": "投影偏好"
+      },
+      "ambient_mode": {
+        "name": "氛围灯模式"
+      }
+    },
+    "binary_sensor": {
+      "connectivity": {
+        "name": "在线"
+      }
+    },
+    "button": {
+      "home": {
+        "name": "主页"
+      },
+      "back": {
+        "name": "返回"
+      },
+      "menu": {
+        "name": "菜单"
+      },
+      "input_source": {
+        "name": "信号源(实验)"
+      },
+      "auto_focus": {
+        "name": "自动对焦"
+      },
+      "patternless_auto_focus": {
+        "name": "无图案自动对焦(实验)"
+      },
+      "floating_settings": {
+        "name": "浮窗设置"
+      },
+      "manual_focus": {
+        "name": "手动对焦"
+      },
+      "manual_qc": {
+        "name": "手动梯形校正"
+      },
+      "manual_shift": {
+        "name": "画面位移"
+      },
+      "manual_zoom": {
+        "name": "画面缩放(实验)"
+      },
+      "panel_alignment": {
+        "name": "面板对齐"
+      },
+      "screen_fit": {
+        "name": "屏幕适配"
+      },
+      "btspk_mode": {
+        "name": "蓝牙音箱模式"
+      },
+      "error_warning": {
+        "name": "错误警告查看"
+      },
+      "wall_color_fit": {
+        "name": "一键墙面颜色自适应"
+      },
+      "camera_calibration": {
+        "name": "相机标定(实验)"
+      },
+      "depth_gsensor_calibration": {
+        "name": "重力传感器标定(实验)"
+      },
+      "framefit": {
+        "name": "画面适配(实验)"
+      },
+      "generate_camera_pattern": {
+        "name": "生成标定图案(实验)"
+      },
+      "smart_eye_protect_run": {
+        "name": "智能护眼触发(实验)"
+      },
+      "auto_correction_run": {
+        "name": "自动校正触发"
+      },
+      "obstacle_avoidance_run": {
+        "name": "避障校正触发"
+      },
+      "zoom_in": {
+        "name": "画面放大"
+      },
+      "zoom_out": {
+        "name": "画面缩小"
+      },
+      "shift_up": {
+        "name": "画面上移"
+      },
+      "shift_down": {
+        "name": "画面下移"
+      },
+      "shift_left": {
+        "name": "画面左移"
+      },
+      "shift_right": {
+        "name": "画面右移"
+      },
+      "geometry_reset": {
+        "name": "重置画面校正"
+      }
+    },
+    "switch": {
+      "auto_correction": {
+        "name": "自动校正"
+      },
+      "auto_fit_wall_color": {
+        "name": "墙面颜色自适应"
+      },
+      "movement_sensor": {
+        "name": "移动检测"
+      },
+      "smart_eye_protection": {
+        "name": "智能护眼"
+      },
+      "startup_correction": {
+        "name": "开机校正"
+      },
+      "vmute": {
+        "name": "画面遮蔽"
+      },
+      "ambient_light": {
+        "name": "氛围灯"
+      },
+      "welcome_light": {
+        "name": "开机自动光效"
+      },
+      "touch_sensor_light": {
+        "name": "触控面板灯"
+      },
+      "test_pattern": {
+        "name": "测试图案"
+      },
+      "auto_contrast": {
+        "name": "自动对比度"
+      }
+    }
+  }
+}

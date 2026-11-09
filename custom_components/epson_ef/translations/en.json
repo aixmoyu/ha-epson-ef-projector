@@ -1,0 +1,222 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Epson EF Projector",
+        "description": "Controls the projector through its built-in pjctl HTTP API (firmware-provided, no debug options required). Enter the projector's LAN IP address.",
+        "data": {
+          "host": "Projector IP address",
+          "port": "API port",
+          "name": "Name",
+          "poll_interval": "Poll interval (seconds)"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Epson EF Projector",
+        "description": "Update the connection details after the projector's IP address changes (entity IDs and history are preserved).",
+        "data": {
+          "host": "Projector IP address",
+          "port": "API port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Connection failed: make sure the projector is powered on and on the same network as Home Assistant, and that the IP address is correct."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Epson EF Projector options",
+        "data": {
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "light_hours": {
+        "name": "Light hours"
+      },
+      "distance": {
+        "name": "Distance"
+      }
+    },
+    "number": {
+      "light_output": {
+        "name": "Light output"
+      },
+      "refresh_timer": {
+        "name": "Refresh timer"
+      },
+      "focus_position": {
+        "name": "Focus position"
+      },
+      "color_gain_red": {
+        "name": "Red gain"
+      },
+      "color_gain_green": {
+        "name": "Green gain"
+      },
+      "color_gain_blue": {
+        "name": "Blue gain"
+      },
+      "ambient_brightness": {
+        "name": "Ambient light brightness"
+      }
+    },
+    "select": {
+      "standby_mode": {
+        "name": "Startup mode"
+      },
+      "color_temp": {
+        "name": "Color temperature"
+      },
+      "dynamic_contrast": {
+        "name": "Dynamic contrast"
+      },
+      "projection": {
+        "name": "Projection mode"
+      },
+      "picture_preference": {
+        "name": "Picture preference"
+      },
+      "ambient_mode": {
+        "name": "Ambient light mode"
+      }
+    },
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Online"
+      }
+    },
+    "button": {
+      "home": {
+        "name": "Home"
+      },
+      "back": {
+        "name": "Back"
+      },
+      "menu": {
+        "name": "Menu"
+      },
+      "input_source": {
+        "name": "Input source (experimental)"
+      },
+      "auto_focus": {
+        "name": "Auto focus"
+      },
+      "patternless_auto_focus": {
+        "name": "Patternless auto focus (experimental)"
+      },
+      "floating_settings": {
+        "name": "Floating settings"
+      },
+      "manual_focus": {
+        "name": "Manual focus"
+      },
+      "manual_qc": {
+        "name": "Manual keystone"
+      },
+      "manual_shift": {
+        "name": "Picture shift"
+      },
+      "manual_zoom": {
+        "name": "Picture zoom (experimental)"
+      },
+      "panel_alignment": {
+        "name": "Panel alignment"
+      },
+      "screen_fit": {
+        "name": "Screen fit"
+      },
+      "btspk_mode": {
+        "name": "Bluetooth speaker mode"
+      },
+      "error_warning": {
+        "name": "Error & warning view"
+      },
+      "wall_color_fit": {
+        "name": "Wall color auto fit (trigger)"
+      },
+      "camera_calibration": {
+        "name": "Camera calibration (experimental)"
+      },
+      "depth_gsensor_calibration": {
+        "name": "G-sensor calibration (experimental)"
+      },
+      "framefit": {
+        "name": "Frame fit (experimental)"
+      },
+      "generate_camera_pattern": {
+        "name": "Generate calibration pattern (experimental)"
+      },
+      "smart_eye_protect_run": {
+        "name": "Smart eye protection (trigger, experimental)"
+      },
+      "auto_correction_run": {
+        "name": "Auto correction (trigger)"
+      },
+      "obstacle_avoidance_run": {
+        "name": "Obstacle avoidance (trigger)"
+      },
+      "zoom_in": {
+        "name": "Zoom in"
+      },
+      "zoom_out": {
+        "name": "Zoom out"
+      },
+      "shift_up": {
+        "name": "Shift image up"
+      },
+      "shift_down": {
+        "name": "Shift image down"
+      },
+      "shift_left": {
+        "name": "Shift image left"
+      },
+      "shift_right": {
+        "name": "Shift image right"
+      },
+      "geometry_reset": {
+        "name": "Reset geometry corrections"
+      }
+    },
+    "switch": {
+      "auto_correction": {
+        "name": "Auto correction"
+      },
+      "auto_fit_wall_color": {
+        "name": "Wall color auto fit"
+      },
+      "movement_sensor": {
+        "name": "Movement sensor"
+      },
+      "smart_eye_protection": {
+        "name": "Smart eye protection"
+      },
+      "startup_correction": {
+        "name": "Startup correction"
+      },
+      "vmute": {
+        "name": "Video mute"
+      },
+      "ambient_light": {
+        "name": "Ambient light"
+      },
+      "welcome_light": {
+        "name": "Welcome lighting"
+      },
+      "touch_sensor_light": {
+        "name": "Touch sensor light"
+      },
+      "test_pattern": {
+        "name": "Test pattern"
+      },
+      "auto_contrast": {
+        "name": "Auto contrast"
+      }
+    }
+  }
+}

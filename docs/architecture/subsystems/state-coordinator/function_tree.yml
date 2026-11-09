@@ -1,0 +1,352 @@
+# ════════════════════════════════════════════════════════════════════════════
+# 模块功能树 — state-coordinator
+# project: ha-epson-ef-projector
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# 范围: custom_components/epson_ef/coordinator.py (154) + const.py (222) = 376 行
+# 结构: 顶层节点列表 (R1); directory → function → point/spec/constraint
+# ════════════════════════════════════════════════════════════════════════════
+- id: '1'
+  type: directory
+  name: 状态协调域
+  description: 把投影仪的无推送 HTTP 世界压缩成一份每轮重建的状态快照，并把「设备能读什么、能写什么、值域到哪里」固化成声明式契约常量。上游是实体平台，下游是 pjctl 传输层。
+  children:
+  # ── 子功能域：轮询编排 ──────────────────────────────────────────────────
+  - id: '10'
+    type: directory
+    name: 轮询编排
+    description: 以快/慢双速节奏调用传输层、装配轮询快照字典、并在读失败时结转上一轮已知值。负责「什么时候读多少」，不负责「怎么读」。
+    children:
+    - id: '101'
+      type: function
+      name: 探测投影仪电源态与灯时
+      description: 每轮轮询都必须完成的一次双层探针：先用产品名判活性，再用灯时命令判唤醒。产出 `state` 与可选光源时长二元组，是全部实体状态的唯一来源。
+      depends_on: []
+      node_context:
+        keywords: ["power_probe", "liveness_check", "lamp_hours", "standby_detect"]
+        code_mapping:
+          - "custom_components/epson_ef/coordinator.py:42-56"
+          - "custom_components/epson_ef/api.py:221-276"
+      children:
+      - id: '10101'
+        type: function_point
+        name: 双层活性探测
+        description: 第一层 CONFIG_GET_PRODUCT_NAME 判设备是否在线；第二层 CONFIG_GET_LIGHT_TIME 判是否唤醒。两层失败语义被显式区分。
+        spec: 第一层抛不可达则整体抛 UpdateFailed；第二层任何失败（FAIL/超时/断连）一律归一为待机（api.py:236-276）。
+        constraint: 第二层失败绝不允许冒泡成「不可达」（api.py:248-251 注释）。
+        input: 协调器的每轮调度
+        process: "`await self.api.probe_state()` → (state, light)（coordinator.py:43）"
+        output: "`data['state'] ∈ {'on','off'}` + 可选的 `light_hours`/`light_extra`"
+      - id: '10102'
+        type: function_point
+        name: 探测异常降级为待机
+        description: 端点可达但探针命令本身失败时，不判故障而是按待机处理，避免电源切换瞬态把整个集成打成不可用。
+        spec: 捕获 EpsonApiCommandFailed → `state, light = "off", None` 并记 debug 日志（coordinator.py:46-49）。
+        constraint: 仅 EpsonApiUnavailable 才升级为 UpdateFailed（coordinator.py:44-45）。
+        input: EpsonApiCommandFailed
+        process: 就地改写局部变量，不触碰上一轮数据
+        output: "`data['state'] = 'off'`"
+      - id: '10103'
+        type: function_point
+        name: 记录灯时测量时刻
+        description: 灯时只在唤醒时可读，因此必须同时记录「这个读数是什么时候量的」，否则结转后无法判断陈旧性。
+        spec: 仅在 `light` 为真时写入 `light_hours`/`light_extra`/`light_measured_at` 三键（coordinator.py:52-56）。
+        constraint: 测量时刻存 ISO 字符串而非 datetime 对象（coordinator.py:54-55 注释，理由见 module_design）。
+        input: probe_state 的灯时二元组
+        process: "`dt_util.now(timezone.utc).isoformat()`"
+        output: "`data['light_measured_at']: str`"
+      - id: '10111'
+        type: function_spec
+        name: 每轮必探测规格
+        description: 探针段位于 `_poll_count` 自增之后、慢轮判定之前，不受任何节流条件保护——即每轮固定 2 条 HTTP（在线时），待机时因 verify 重试最坏 3 条（coordinator.py:38-43；api.py:252-264）。
+      - id: '10112'
+        type: function_constraint
+        name: 不可达必须显式失败
+        description: 设备不可达时不得产出伪快照，必须抛 UpdateFailed 让 HA 把全部 CoordinatorEntity 标为 unavailable，否则用户会看到一份静默陈旧的界面（coordinator.py:44-45）。
+
+    - id: '102'
+      type: function
+      name: 按轮次节奏刷新慢速诊断与设置回读
+      description: 把 25 项慢变只读量（诊断 + 可写设置当前值）压缩到每 12 轮执行一次，且只在唤醒态执行，用时间换固件压力。
+      depends_on:
+        - "101"
+      node_context:
+        keywords: ["slow_lane", "diagnostics", "poll_throttle", "settings_readback"]
+        code_mapping:
+          - "custom_components/epson_ef/coordinator.py:59-132"
+          - "custom_components/epson_ef/const.py:53-92"
+      children:
+      - id: '10201'
+        type: function_point
+        name: 首轮强制刷新
+        description: 首次轮询（`_poll_count == 1`）无条件进入慢段，保证集成启动后立刻有一份完整数据，而不必等 12 轮。
+        spec: "`self._poll_count == 1 or self._poll_count % DIAGNOSTIC_EVERY_N_POLLS == 0`（coordinator.py:59）"
+        constraint: 1 不被 12 整除，故必须单列这一条件，否则首轮无诊断数据。
+        input: `_poll_count == 1`
+        process: 进入慢段
+        output: 完整 diag/settings 快照
+      - id: '10202'
+        type: function_point
+        name: 每十二轮刷新
+        description: 稳态下每 12 个轮询周期执行一次慢段，默认 15s 间隔即约 180s 一次。
+        spec: "`DIAGNOSTIC_EVERY_N_POLLS = 12`（const.py:222）"
+        constraint: 慢值最大陈旧度 = 12 × poll_interval，与 poll_interval 强耦合。
+        input: `_poll_count % 12 == 0`
+        process: 进入慢段
+        output: 刷新后的 diag/settings
+      - id: '10203'
+        type: function_point
+        name: 逐条串行节流
+        description: 慢段内每条读命令严格串行 await，成功读到值时追加 0.2s 间隔，避免压垮固件的单线程 HTTP 服务。
+        spec: 三处 `await asyncio.sleep(0.2)` 分别位于诊断表（coordinator.py:88）、开关表（:96）、选择表（:101）；仅 `raw is not None` 时休眠。
+        constraint: 后置的非表命令（light_output / refresh_timer / focus_range / focus_position / product / standby_mode）不节流（coordinator.py:102-132）。
+        input: 三张声明式表与固定命令清单
+        process: for 循环 + 条件 sleep
+        output: "`settings`/`diag` 局部字典"
+      - id: '10204'
+        type: function_point
+        name: 待机时整段跳过只读探测
+        description: 待机态下引擎类查询一律不执行，直接省掉 27 条命令，避免必然失败的请求堆积。
+        spec: "`if state == 'on':` 包住 17 条诊断探针 + 6 条开关回读 + 4 条选择回读 + 6 条后置命令（coordinator.py:61-123）"
+        constraint: `standby_mode` 是唯一例外，它在 `if state == "on":` 之外、慢段之内，待机也读（coordinator.py:130-132）。
+        input: state != 'on'
+        process: 跳过整个缩进块
+        output: 本轮无 diag / 无 settings
+      - id: '10211'
+        type: function_constraint
+        name: 诊断与设置整段不刷新
+        description: 待机期间 `diag` 与 `settings` 两个键完全不会在本轮产生——`settings` 的初始化（coordinator.py:91）就在 `if state == "on":` 内部，`diag` 虽在外层初始化但保持空字典，`if diag:`（:124）为假故不写键。两者只能靠末尾结转存活。
+
+    - id: '103'
+      type: function
+      name: 装配轮询快照并结转旧值
+      description: 把本轮读到的碎片装配成一个纯字符串/数字的字典，并把本轮未刷新的键从上一次快照结转，构成实体平台的唯一数据面。
+      depends_on:
+        - "101"
+        - "102"
+      node_context:
+        keywords: ["carry_forward", "snapshot_assembly", "stale_data", "data_contract"]
+        code_mapping:
+          - "custom_components/epson_ef/coordinator.py:39-39"
+          - "custom_components/epson_ef/coordinator.py:134-154"
+      children:
+      - id: '10301'
+        type: function_point
+        name: 结转产品名
+        description: 产品名只在慢轮唤醒态读取，其余轮次沿用上一份，供设备 model 字段使用。
+        spec: "`if 'product' not in data and self.data: data['product'] = self.data.get('product')`（coordinator.py:135-136）"
+        constraint: 无 `is not None` 守卫——上一轮为 None 时会把 None 显式写回，消费方需自行兜底（switch.py:83）。
+        input: 本轮未产出 product
+        process: 直接取上一轮值
+        output: "`data['product']`"
+      - id: '10302'
+        type: function_point
+        name: 结转启动模式
+        description: 启动模式（节能/快速启动）是慢轮才读的设备级配置，快轮必须沿用。
+        spec: "`if 'standby_mode' not in data and self.data: ...`（coordinator.py:137-138）"
+        constraint: 同样无 None 守卫；读侧 `get_standby_mode` 失败返回 None 时宁可不覆盖（coordinator.py:128-129 注释）。
+        input: 本轮未产出 standby_mode
+        process: 直接取上一轮值
+        output: "`data['standby_mode']`"
+      - id: '10303'
+        type: function_point
+        name: 整体结转灯时三元组
+        description: 灯时、附加位、测量时刻三者必须同生同死，否则会出现「新灯时配旧时间戳」的假新鲜。
+        spec: 三键在同一分支内一次写齐（coordinator.py:139-144）
+        constraint: 以 `light_hours` 是否缺失为唯一判据，不单独判断 `light_extra`/`light_measured_at`。
+        input: 本轮未产出 light_hours
+        process: 三键一起从上一轮复制
+        output: 灯时三元组
+      - id: '10304'
+        type: function_point
+        name: 合并结转诊断包
+        description: 诊断包跨快轮存活，且以「旧值打底 + 新值覆盖」的方式合并，避免单条读失败把整包清空。
+        spec: "`previous = self.data.get('diag'); if previous is not None: data['diag'] = previous`（coordinator.py:145-149）"
+        constraint: 有 None 守卫，与 product/standby_mode 的写法不对称。
+        input: 本轮未产出 diag
+        process: 引用复制（非深拷贝）
+        output: "`data['diag']`"
+      - id: '10305'
+        type: function_point
+        name: 合并结转设置包
+        description: 设置包同理跨轮存活，保证 switch/select/number 在快轮里仍有当前值可显示。
+        spec: "`previous = self.data.get('settings'); if previous is not None: data['settings'] = previous`（coordinator.py:150-153）"
+        constraint: 与诊断包同样以引用方式结转，实体写入会落到同一个字典对象上（见 risk.md）。
+        input: 本轮未产出 settings
+        process: 引用复制
+        output: "`data['settings']`"
+      - id: '10306'
+        type: function_point
+        name: 电源态不结转
+        description: 电源态是唯一不做 carry-forward 的键——每轮都会被探针结果无条件覆盖，包括覆盖成 None 以外的确定值。
+        spec: "`data['state'] = state` 位于无条件的顶层（coordinator.py:51）"
+        constraint: 这是刻意的：电源态陈旧会让开关机按钮做出错误决策（media_player.py:178-199 依赖 state 判断）。
+        input: probe_state 返回值
+        process: 直接赋值
+        output: "`data['state'] ∈ {'on','off'}`"
+      - id: '10311'
+        type: function_spec
+        name: 快照键契约
+        description: 快照固定 8 个可能的顶层键：`state`(str, 必有) / `light_hours`(int) / `light_extra`(int|None) / `light_measured_at`(ISO str) / `diag`(dict[str,str]) / `settings`(dict[str,str]) / `product`(str) / `standby_mode`(str)。全部值必须 JSON 可序列化，因为要进 HA 状态属性（coordinator.py:54-55）。
+      - id: '10312'
+        type: function_constraint
+        name: 读失败不得写入空值
+        description: 任何 `None` 读结果都不写入快照键，只跳过该键交给末尾结转——否则一次瞬态 FAIL 就会把界面打回 unknown（coordinator.py:128-129 注释，:86/:94/:99/:103/:107/:111/:114/:122 的 `is not None` 守卫共同实现）。
+      - id: '10313'
+        type: function_constraint
+        name: 慢轮合并以旧快照为底
+        description: 慢轮重建 settings/diag 时先 `dict(self.data.get(...))` 打底再 `update()` 本轮新值（coordinator.py:117-119, :125-127），因此「本轮没读到的键」保留旧值、「读到的键」被真值覆盖。乐观写入的真值覆盖时机 = 下一次成功的慢轮。
+
+  # ── 子功能域：契约常量声明 ──────────────────────────────────────────────
+  - id: '20'
+    type: directory
+    name: 契约常量声明
+    description: 用纯数据表与常量把「哪些设置可写、值域多少、按键码是什么」从代码里剥离成可被多平台共同解包的契约。本域不含逻辑，只含形状与数值。
+    children:
+    - id: '201'
+      type: function
+      name: 声明可写设置契约
+      description: 用两张定宽元组表描述 6 个 0/1 开关与 4 个多档选择的唯一后缀、翻译键、读写命令号与档位，供轮询回读与实体创建双向消费。
+      depends_on: []
+      node_context:
+        keywords: ["declarative_table", "writable_settings", "tuple_arity", "get_set_command"]
+        code_mapping:
+          - "custom_components/epson_ef/const.py:53-92"
+          - "custom_components/epson_ef/switch.py:34-40"
+          - "custom_components/epson_ef/select.py:36-42"
+      children:
+      - id: '20101'
+        type: function_point
+        name: 声明零一开关表
+        description: 6 行 4 元组（唯一后缀、翻译键、GET 命令、SET 命令），覆盖自动校正、墙面颜色自适应、人体感应、护眼、开机校正、静音。
+        spec: "`WRITABLE_SWITCHES: list[tuple[str,str,str,str]]`，6 行（const.py:53-66）"
+        constraint: 表内 refresh 项已移除（const.py:50-52 注释说明 GET_REFRESH 其实是小时数）。
+        input: 无（静态声明）
+        process: 被两处解包——实体创建 switch.py:38、轮询回读 coordinator.py:92
+        output: 6 个 switch 实体 + settings 的 6 个键
+      - id: '20102'
+        type: function_point
+        name: 声明多档选择表
+        description: 4 行 6 元组（唯一后缀、翻译键、GET、SET、原始档位列表、档位标签映射或 None），覆盖色温、动态对比度、投影方式、投影偏好。
+        spec: "`WRITABLE_SELECTS: list[tuple[str,str,str,str,list[str],dict[str,str]|None]]`，4 行（const.py:75-92）"
+        constraint: 标签为 None 时选项直接暴露固件原始值——说明该档位语义未被确认（const.py:73-74）。
+        input: 无（静态声明）
+        process: 被两处解包——select.py:40、coordinator.py:97
+        output: 4 个 select 实体 + settings 的 4 个键
+      - id: '20111'
+        type: function_constraint
+        name: 元组宽度必须与全部解包点一致
+        description: 这两张表的宽度是跨文件契约。任一侧改宽度而另一侧未跟改，会在运行时抛 `ValueError: too many values to unpack`，且只在慢轮爆发。历史事故与守护测试见 tests/test_const_contract.py:1-9、:111-125。
+      - id: '20112'
+        type: function_spec
+        name: 表驱动而非逐实体类规格
+        description: 一个实体类 + 一张表 = N 个实体（switch.py:56-117、select.py:48-113）。新增设置只需加一行表项与一个翻译键，不需新增类。
+
+    - id: '202'
+      type: function
+      name: 声明设置值域与硬件换算参数
+      description: 把 6 组数值边界（光源亮度、刷新定时器、对焦、氛围灯、几何步进、色彩增益）连同它们的证据来源以常量形式固化，供 number 实体与传输层共同引用。
+      depends_on: []
+      node_context:
+        keywords: ["value_domain", "numeric_range", "firmware_constant", "evidence_provenance"]
+        code_mapping:
+          - "custom_components/epson_ef/const.py:94-191"
+      children:
+      - id: '20201'
+        type: function_point
+        name: 声明光源亮度值域
+        description: 50–100、步进 5，来自机身菜单滑条定义。
+        spec: "`LIGHT_OUTPUT_MIN/MAX/STEP = 50/100/5`（const.py:94-97），注释标注 menu.json 20111"
+        constraint: 步进是否为固件强约束未经写值实测（见 [待确认]）。
+        input: 无
+        process: number.py:78-80 直接引用为实体边界
+        output: 滑条实体边界
+      - id: '20202'
+        type: function_point
+        name: 声明刷新定时器值域
+        description: 1–24 小时、步进 1，来自 PjWrapper 静态值；同时承担「GET_REFRESH 不是 0/1 开关」这一现场分析结论的载体。
+        spec: "`REFRESH_TIMER_MIN/MAX/STEP = 1/24/1`（const.py:99-103）"
+        constraint: 严禁发送 `SET_REFRESH \"1\"`（那是立即刷新并关机），写格式固定 `0 <h>`（api.py:481-488）。
+        input: 无
+        process: number.py:157-159
+        output: 定时器实体边界
+      - id: '20203'
+        type: function_point
+        name: 声明对焦行程与闭环参数
+        description: 行程 0–264、容差 3、最大尝试 14 次、连续移动速度 65 单位/秒、脉冲 0.1–2.0s、稳定轮询 0.45s，共同定义「无绝对定位命令时如何闭环到位」。
+        spec: "`FOCUS_*` 共 8 个常量（const.py:119-133）"
+        constraint: 单步位移从「恒定 10」被纠正为「换向首步 10、同向 1」（const.py:108-113），故 FOCUS_STEP_UNIT=1 只描述同向稳态。
+        input: 无
+        process: number.py:237-239 取行程边界；api.py:559-584 取闭环参数
+        output: 对焦实体边界 + 闭环预算
+      - id: '20204'
+        type: function_point
+        name: 声明氛围灯亮度与模式换算
+        description: UI 0–100 与固件 0–255 线性换算（×2.55），4 个光效模式映射到固件槽位 3–6。
+        spec: "`AMBIENT_BRIGHTNESS_MIN/MAX/STEP = 0/100/1`、`AMBIENT_BRIGHTNESS_FW_SCALE = 2.55`、`AMBIENT_MODE_OPTIONS` 4 行（const.py:152-163）"
+        constraint: 写-only 能力，读侧全 FAIL，故实体必须 assumed_state（switch.py:166-169、number.py:444-447）。
+        input: 无
+        process: api.py:400-418 做 clamp 与格式化
+        output: 亮度实体边界 + 模式选项
+      - id: '20205'
+        type: function_point
+        name: 声明几何步进量
+        description: 变焦步进 104、位移步进 13，来自三款原厂应用的 ± 回环实测（零残差）。
+        spec: "`QC_ZOOM_STEP = 104`、`QC_SHIFT_STEP = 13`（const.py:176-177）"
+        constraint: 仅这两个量被声明为常量，QC 子命令其余阈值（0–3 角点、±104 边界）散落在注释里未常量化。
+        input: 无
+        process: button.py:68-79 拼 params；api.py:590-608
+        output: 6 个几何按钮的步长
+      - id: '20206'
+        type: function_point
+        name: 声明色彩增益值域
+        description: 三通道 0–255 全范围精确读写，实测边界回环通过。
+        spec: "`COLOR_GAIN_MIN/MAX = 0/255`（const.py:190-191）"
+        constraint: 与机身菜单 ColorTuner（Android Settings.Global）不同源，不可混用（const.py:187-189）。
+        input: 无
+        process: number.py:318-319
+        output: 三个通道实体边界
+      - id: '20211'
+        type: function_constraint
+        name: 值域必须有可追溯证据
+        description: 每个值域常量旁必须写明来源等级：真机变值回环 / 原厂 固件静态分析 / menu.json 定义 / 未确认假设。四档证据在同一文件内混排（如 color_temp 明确标记「未确认」const.py:73-74），这是本模块的书写纪律。
+      - id: '20212'
+        type: function_spec
+        name: 未消费常量规格
+        description: "`FOCUS_STEP_UNIT`（const.py:122）在包内无任何生产消费者，仅被 tests/test_regressions.py:91 断言等值以锁死「步长不是 10」的错误假设；它是回归哨兵而非常量。"
+
+    - id: '203'
+      type: function
+      name: 映射遥控按键与启动模式语义
+      description: 把裸数字 keycode 与「节能/快速启动」这类设备语义固化在一处，并提供双向换算函数，供服务层与选择实体使用。
+      depends_on: []
+      node_context:
+        keywords: ["keycode_map", "standby_semantics", "bidirectional_mapping"]
+        code_mapping:
+          - "custom_components/epson_ef/const.py:21-45"
+          - "custom_components/epson_ef/const.py:194-219"
+      children:
+      - id: '20301'
+        type: function_point
+        name: 映射遥控按键码
+        description: 23 个命名按键 → Android keycode，供 `epson_ef.send_key` 服务按名字发键。
+        spec: "`KEYCODES: dict[str,int]` 23 项（const.py:195-219），命令号由 `KEYCODE_SEND = 'NOTIFY_KEYEVENT'` 指定（const.py:21）"
+        constraint: 唯一生产消费者是 services.py:49；media_player.py 与 button.py 全部用字面量绕过（见 risk.md）。
+        input: 服务调用的 key 字符串
+        process: "`KEYCODES.get(key)`，未命中则回退把纯数字当 keycode（services.py:49-53）"
+        output: int keycode
+      - id: '20302'
+        type: function_point
+        name: 映射启动模式语义
+        description: 把固件 0/1 与「节能/快速启动」双向换算，并允许未知原始值保持 None 而不猜测。
+        spec: "`STANDBY_MODE_OPTIONS = {'0': '节能', '1': '快速启动'}`（const.py:27-30）+ 两个方向函数（:33-45）"
+        constraint: 映射依据是 固件菜单定义而非实机核对，故原始值始终保留在实体属性 `raw_value` 中供反查（const.py:23-26 注释、select.py:148-150）。
+        input: 原始值或用户选项
+        process: 线性查表
+        output: 另一侧表示或 None
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+#   本模块参与的全局 function 节点 id: 12, 31, 32, 44, 52, 71
+#   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
+#         两者通过上述 id 对齐, 模块边界不因合并而改变。
+# ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,35 @@
+send_key:
+  name: 发送按键
+  description: 向投影仪发送遥控器按键(Android keycode)
+  fields:
+    entity_id:
+      name: 实体
+      description: 目标 media_player 实体(可选,多台投影仪时用于区分)
+      example: media_player.epson_projector
+      selector:
+        entity:
+          integration: epson_ef
+          domain: media_player
+    key:
+      name: 按键
+      description: "按键名(HOME/BACK/DPAD_UP/DPAD_DOWN/DPAD_LEFT/DPAD_RIGHT/DPAD_CENTER/MENU/POWER/MUTE/MEDIA_PLAY/MEDIA_PAUSE 等)或数字 keycode"
+      example: DPAD_UP
+raw_request:
+  name: 原生请求
+  description: "发送任意 pjctl 命令,结果通过事件 epson_ef_response 返回(调试用;可执行 CONFIG_SET_* 修改设备配置,请谨慎使用)"
+  fields:
+    entity_id:
+      name: 实体
+      description: 目标 media_player 实体(可选)
+      selector:
+        entity:
+          integration: epson_ef
+          domain: media_player
+    id:
+      name: 命令 ID
+      description: "如 CONFIG_GET_PRODUCT_NAME / CONFIG_GET_LIGHT_TIME / NOTIFY_KEYEVENT"
+      example: CONFIG_GET_PRODUCT_NAME
+    params:
+      name: 参数
+      description: 字符串参数(可选;NOTIFY_KEYEVENT 传数字键值,如 26)
+      example: "26"

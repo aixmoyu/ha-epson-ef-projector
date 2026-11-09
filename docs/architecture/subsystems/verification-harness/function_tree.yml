@@ -1,0 +1,500 @@
+# 模块: verification-harness —— 验证与现场分析设施（tests/ + tools/ + CI 门禁）
+# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# project: "ha-epson-ef-projector"
+#
+# 本模块不是运行时域：它不参与 HA 集成加载，只在"开发者在场"时运行。
+# 因此节点的名字一律取业务能力（验证什么/锁定什么/探测什么），
+# 不取 test_xxx / FakeSession / probe_focus 之类代码名。
+# 全部节点结论可用 node_context.code_mapping 回溯到真实文件与行。
+
+- id: '1'
+  type: directory
+  name: 验证与现场分析设施
+  description: 用离线单测锁定传输层协议契约、用真机脚本回落固件能力、用 CI 门禁守住最低质量线。三者共享同一个前提——不导入 Home Assistant 也能跑，因为该环境从未安装 HA（`python3 -c "import homeassistant"` → ModuleNotFoundError，rc=1，实测）。
+  children:
+  - id: '10'
+    type: directory
+    name: 离线验证域
+    description: 秒级可重复、不接触真实设备的验证能力。全部落在 tests/ 4 个文件、1020 行、64 个用例上（`wc -l tests/*.py` 实测），通过伪包注入 + AST 静态解析绕开 HA。
+    children:
+    - id: '101'
+      type: function
+      name: 隔离 Home Assistant 依赖
+      description: 在不安装 HA 的机器上加载生产传输层（`custom_components/epson_ef/api.py`）。手法是往 sys.modules 塞一个手工构造的 `types.ModuleType("epson_ef")`，只给 `__path__`，从而让 `from epson_ef.api import ...` 命中源码文件而不执行会拉入 HA 的 `__init__.py`。
+      depends_on: []
+      node_context:
+        keywords: ["pseudo_package", "no_home_assistant", "import_isolation", "sys_modules"]
+        code_mapping:
+          - "tests/test_api.py:17-33"
+          - "tests/test_const_contract.py:19-24"
+          - "tests/test_regressions.py:22-35"
+          - "custom_components/epson_ef/api.py:1-4"
+      children:
+      - id: '10101'
+        type: function_point
+        name: 注入伪包路径
+        description: 构造空模块对象并只设 `__path__` 指向包目录，再登记进 sys.modules；后续 `import epson_ef.api` 由标准 FileFinder 从该路径解析。
+        spec: "`_pkg = types.ModuleType("epson_ef"); _pkg.__path__ = [str(_PKG_DIR)]; sys.modules["epson_ef"] = _pkg`"
+        input: 包目录绝对路径
+        process: 先写 sys.modules 再执行 import，使解释器跳过 `__init__.py` 的字节码执行
+        output: `epson_ef.api` / `epson_ef.const` 可导入，`epson_ef.__file__` 为 None
+      - id: '10102'
+        type: function_point
+        name: 校验隔离必要性
+        description: 反证：不加伪包直接导入同一模块会失败。`python3 -c "import sys; sys.path.insert(0,'custom_components'); import epson_ef.button"` → `ModuleNotFoundError: No module named 'homeassistant'`（`__init__.py:6` 处抛出）。
+        spec: "12 / 14 个生产模块 import homeassistant（每模块 2–9 处）；仅 api.py 与 const.py 为 0 处"
+        input: 生产包导入请求
+        process: 包导入先执行 `__init__.py`，其第 6 行 `from homeassistant.config_entries import ConfigEntry`
+        output: 无 HA 时抛 ModuleNotFoundError；有伪包时可绕开
+      - id: '10111'
+        type: function_constraint
+        name: 伪包不得执行业务装配
+        description: 伪包的代价是 `__init__.py` 从不执行，因此 PLATFORMS 转发、身份解析、legacy 实体清理、hass.data 组装全部零覆盖（`__init__.py:24`, `:166`, `:203`）。隔离能力与覆盖缺口是同一枚硬币的两面，任何"测试全绿"的结论都必须附此限制。
+    - id: '102'
+      type: function
+      name: 验证认证握手
+      description: 锁定 pjctl 的 HTTP Digest 行为：挑战解析、nonce 计数递增、授权头构造、401 后单次重试、连接错误清缓存。共 9 个用例（DigestTests 3 + RequestTests 6）。
+      depends_on: ["101"]
+      node_context:
+        keywords: ["digest_auth", "nonce_cache", "challenge_retry", "ww_authenticate"]
+        code_mapping:
+          - "tests/test_api.py:35-37"
+          - "tests/test_api.py:100-162"
+          - "custom_components/epson_ef/api.py:119-146"
+      children:
+      - id: '10201'
+        type: function_point
+        name: 构造授权头
+        description: 无 nonce 时返回 None；有 nonce 时按 `nc=00000001/00000002` 递增，用户名固定 `EPSONICL`、`qop=auth`。
+        spec: "`nc=%08x` 两位十六进制递增（`tests/test_api.py:105-113`）"
+        input: 方法 + URI + 缓存的 (nonce, realm, qop)
+        process: 拼 Digest 参数串并计算 MD5 响应
+        output: `Digest ...` 头或 None
+      - id: '10202'
+        type: function_point
+        name: 处理 401 挑战与重试
+        description: 首次请求不带 Authorization；401 时解析 WWW-Authenticate，成功则重试恰好一次。断言"第二次调用携带 Digest 头"与"总请求数为 2"。
+        spec: "重试次数上限 1（`api.py:180` `for attempt in range(2)`），非法挑战抛 `EpsonApiError`"
+        input: 401 响应 + WWW-Authenticate
+        process: `_update_auth()` 解析 realm/nonce/qop，失败即抛
+        output: 200 数据字典 / EpsonApiError
+      - id: '10203'
+        type: function_point
+        name: 失效即清缓存
+        description: 连接错误与超时都把缓存 nonce 置空（`assertIsNone(api._auth)`），避免用过期 nonce 继续打服务器。
+        spec: "`api.py:207-215` 两个 except 分支各自 `_clear_auth()`（`:208`、`:213`）"
+        input: aiohttp.ClientConnectionError / asyncio.TimeoutError
+        process: 捕获 → 清 auth → 抛 EpsonApiUnavailable / EpsonApiTimeout
+        output: 缓存失效 + 语义化异常
+    - id: '103'
+      type: function
+      name: 判定电源状态语义
+      description: 把"不可达 / 待机 / 唤醒"三分判定固化成用例：存活探测（PRODUCT_NAME）失败=不可达；存活通过后唤醒标志（LIGHT_TIME）任何失败都=待机，绝不误报不可达。共 10 个用例（ProbeTests 6 + PowerStateTests 2 + UnreachableProjectorTests 2）。
+      depends_on: ["101", "102"]
+      node_context:
+        keywords: ["probe_state", "standby_detection", "liveness", "unreachable_semantics"]
+        code_mapping:
+          - "tests/test_api.py:165-215"
+          - "tests/test_regressions.py:186-219"
+          - "custom_components/epson_ef/api.py:221-276"
+      children:
+      - id: '10301'
+        type: function_point
+        name: 存活探测失败即不可达
+        description: PRODUCT_NAME 抛 `EpsonApiUnavailable`（断电/错 IP/防火墙 DROP）时，`probe_state` 必须原样抛出该异常而不是返回 off。
+        spec: "超时也要归一化为 Unavailable（`api.py:240-248`）"
+        input: 客户端连接错误 / 超时
+        process: liveness 段只放行 Unavailable 语义，Timeout 显式转换
+        output: 抛 EpsonApiUnavailable
+      - id: '10302'
+        type: function_point
+        name: 唤醒标志失败即待机
+        description: 存活通过后，LIGHT_TIME 的 FAIL、超时、连接被掐断三种形态全部映射为 `("off", None)`；`verify=True` 时 FAIL 重试一次，`verify=False` 时单发。
+        spec: "`attempts = 2 if verify else 1`；重试间隔 1.5s（`api.py:253-275`）"
+        input: LIGHT_TIME 的响应或异常
+        process: 三分支归一到 off
+        output: `("off", None)` 或 `("on", (h, m))`
+      - id: '10303'
+        type: function_point
+        name: 轮询等待目标态
+        description: `wait_for_state` 在超时内反复 probe，匹配即 True；`timeout_s=0` 时立即 False。
+        spec: "仅捕获 `EpsonApiError` 返回 False，其余异常继续冒泡（`api.py:278-295`）"
+        input: 目标态 + 超时秒数
+        process: 循环 probe_state(verify=False)
+        output: bool
+      - id: '10311'
+        type: function_constraint
+        name: 待机不得升级为不可达
+        description: 这是真机缺陷固化项（`tests/test_regressions.py:186-219`）：若把 LIGHT_TIME 超时冒泡成 Unavailable，上层会误判"设备在线但卡死"。用例用 203.0.113.9（TEST-NET-3）构造，不依赖真实设备。
+    - id: '104'
+      type: function
+      name: 锁定命令载荷契约
+      description: 把"`size` = params 的空格分词数，而非字节长度"这条现场分析结论固化成 32 处载荷断言（分布在 20 个用例方法中，覆盖 PayloadTests / Round4Tests / Round5Tests / Round6Tests / FocusAbsoluteTests），覆盖 KEYEVENT/待机模式/灯输出/氛围灯/序列号子索引/刷新定时器/对焦/色彩增益/几何/测试图案/自动对焦。
+      depends_on: ["101", "102"]
+      node_context:
+        keywords: ["payload_size", "token_count", "command_envelope", "firmware_contract"]
+        code_mapping:
+          - "tests/test_api.py:218-280"
+          - "tests/test_api.py:299-504"
+          - "tests/test_api.py:520-527"
+          - "custom_components/epson_ef/api.py:147-180"
+      children:
+      - id: '10401'
+        type: function_point
+        name: 断言单 token 多字符的 size 为 1
+        description: `SET_LIGHT_OUTPUT params="55"` 必须是 `size=1`（不是 2）；这是写通路被固件拒绝的根因修复的回归锁。
+        spec: "`{\"id\": \"CONFIG_SET_LIGHT_OUTPUT\", \"size\": 1, \"params\": \"55\"}`"
+        input: 高层方法调用（如 `set_light_output(55)`）
+        process: 截获 FakeSession 记录的第二次 POST 的 json 体
+        output: 断言整个 payload 字典相等
+      - id: '10402'
+        type: function_point
+        name: 断言多 token 的 size 等于分词数
+        description: `SET_AMBIENT_LIGHT "3 1 48"` → size=3，`SET_REFRESH "0 12"` → size=2，`SET_QC "2 13 0"` → size=3。
+        spec: "`size = len(params.split(\" \"))`（`api.py:171`）"
+        input: params 字符串
+        process: 同上，逐命令断言
+        output: 断言通过/失败
+      - id: '10411'
+        type: function_constraint
+        name: 断言粒度为整包字典
+        description: 用例断言的是完整 payload 字典相等而非单字段，因此任何新增字段/改序都会被拦下——代价是加字段必须同步改 20 处断言。
+    - id: '105'
+      type: function
+      name: 固化真机缺陷回归
+      description: 把真机阶段发现的 5 类缺陷各留一条护栏：对焦闭环（含取消时必发 OFF）、遗留实体清理表、`async_get_entity_id` 实参顺序、coordinator 确实遍历两张可写表、不可达语义。共 5 个用例类 / 9 个用例。
+      depends_on: ["101", "103", "104"]
+      node_context:
+        keywords: ["regression_guard", "focus_closed_loop", "legacy_cleanup", "argument_order"]
+        code_mapping:
+          - "tests/test_regressions.py:1-11"
+          - "tests/test_regressions.py:38-138"
+          - "tests/test_regressions.py:141-180"
+      children:
+      - id: '10501'
+        type: function_point
+        name: 校验对焦闭环三性质
+        description: ①必须出现 MAX/MIN 连续移动；②每个脉冲后必须 OFF（`count("OFF") == count("MAX")+count("MIN")`）；③sleep 被取消时 finally 仍发 OFF。
+        spec: "起点 89 目标 150 的旧实现只到 128（`tests/test_regressions.py:41-64`）"
+        input: patch 后的 request/get_focus_position
+        process: 记录全部 `CONFIG_SET_FOCUS` 的 params 序列
+        output: 断言序列性质
+      - id: '10502'
+        type: function_point
+        name: 校验清理表覆盖被移除实体
+        description: 用 AST 从 `__init__.py` 取出 `legacy` 字典字面量（`ast.literal_eval`），断言 `setting-refresh` / `button-engine_refresh` / `standby_mode` / `light_output` 四条都在。
+        spec: "不导入 `__init__.py`，只 `ast.parse` 后找名字为 legacy 的赋值（`tests/test_regressions.py:99-110`）"
+        input: `__init__.py` 源码
+        process: 遍历 AnnAssign/Assign 目标名
+        output: dict 或 self.fail
+      - id: '10503'
+        type: function_point
+        name: 校验注册表 API 实参顺序
+        description: 断言 `async_get_entity_id` 第一实参是 `DOMAIN`、第二实参不是 `DOMAIN`——两个参数都是字符串，写反不报错、只静默失效。
+        spec: "真实签名 `(domain, platform, unique_id)`"
+        input: `__init__.py` 的 ast.Call 节点
+        process: 按 attr/id 匹配函数名后检查 args[0]/args[1]
+        output: 断言通过/失败
+      - id: '10512'
+        type: function_spec
+        name: 缺陷来源与真机证据
+        description: 三类缺陷均来自 `docs/reports/v3.10.0-release-test.md` 的 BLOCKER-1/MAJOR-2/MAJOR-3 记录；回归用例的 docstring 保留了现象、根因与真实复现地址（`tests/test_regressions.py:1-11`, `:141-148`, `:186-193`）。
+    - id: '106'
+      type: function
+      name: 锁定配置表结构契约
+      description: 用 AST 双向比对"表的元组宽度"与"每个解包点的名字个数"，拦住 Python 只在运行到该行才抛的 `ValueError: too many values to unpack`。4 张表 / 3 个用例。
+      depends_on: []
+      node_context:
+        keywords: ["ast_contract", "tuple_arity", "unpack_width", "table_driven"]
+        code_mapping:
+          - "tests/test_const_contract.py:1-32"
+          - "tests/test_const_contract.py:35-142"
+          - "custom_components/epson_ef/const.py:53-92"
+          - "custom_components/epson_ef/button.py:17-83"
+      children:
+      - id: '10601'
+        type: function_point
+        name: 定位表定义并求宽度
+        description: 在指定源文件里找 `AnnAssign` 且 target 名为表名、value 为 List/Tuple 的节点，取第一行的 elt 个数作为宽度；不信任 type annotation。
+        spec: "`TABLE_SOURCES` 4 项：WRITABLE_SWITCHES/WRITABLE_SELECTS/AMBIENT_LIGHT_SWITCHES→const.py，BUTTON_DEFS→button.py（`:27-32`）"
+        input: 表名
+        process: `ast.walk` + 首元素 `len(first.elts)`
+        output: int 宽度（找不到则 AssertionError）
+      - id: '10602'
+        type: function_point
+        name: 定位全部解包点
+        description: 扫描包内所有 `*.py`，同时匹配语句式 `ast.For` 与推导式 `ast.comprehension`；target 必须是纯名字元组，iter 的最内层引用名必须等于表名。
+        spec: "只认 ast.For 会漏掉 select.py/switch.py 的推导式（`:64-88`）"
+        input: 表名
+        process: 逐文件 ast.parse 后 walk
+        output: [(文件名, 行号, 宽度)]
+      - id: '10603'
+        type: function_point
+        name: 双向断言与位置锚定
+        description: 三个用例分别断言：表非空且每行等宽；每个解包点宽度==表宽；已知消费位置集合不得漂移（防止把解包点挪到测试看不到的地方）。
+        spec: "实测四张表宽度 4 / 6 / 4 / 5，解包点 6 处：coordinator.py:92,97、switch.py:38,45、select.py:40、button.py:96"
+        input: 表名集合
+        process: 集合差集 + 逐点 assertEqual
+        output: 断言通过/失败
+      - id: '10604'
+        type: function_point
+        name: 校验取值映射表双向可逆
+        description: `STANDBY_MODE_OPTIONS` 的"原始值 ↔ 中文标签"两个方向各断言一次：`"0"→节能`、`"1"→快速启动`，未知输入一律 None（不抛异常、不猜测）。该表是 dict 形态、不在 `TABLE_SOURCES` 中，因此由行为用例而非 AST 契约保护——是四张元组表之外唯一被覆盖的配置表。
+        spec: "`custom_components/epson_ef/const.py:27-45`；用例 `tests/test_api.py:282-296`（2 个）"
+        input: 原始值或标签
+        process: 调用 standby_option_to_raw / standby_raw_to_option
+        output: 标签 / 原始值 / None
+      - id: '10611'
+        type: function_constraint
+        name: 不得用星号兜底解包
+        description: 契约只认纯名字元组（`all(isinstance(e, ast.Name))`），一旦改成 `a, b, *rest` 该解包点会从扫描结果中消失，从而不再受保护——这是约束的边界，也是它唯一的规避路径。
+      - id: '10612'
+        type: function_spec
+        name: 拦住的事故
+        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，58 个实体全部 unavailable（`tests/test_const_contract.py:1-9`，`docs/reports/v3.10.0-release-test.md:16-22`）。
+    - id: '107'
+      type: function
+      name: 拦截未定义名字
+      description: 用 pyflakes 扫生产包，只保留 `undefined name` / `redefinition` 两类致命行（未使用导入算风格，不算失败）。1 个用例，范围仅 `custom_components/epson_ef/*.py`。
+      depends_on: []
+      node_context:
+        keywords: ["pyflakes", "undefined_name", "name_error", "static_gate"]
+        code_mapping:
+          - "tests/test_static.py:1-38"
+      children:
+      - id: '10701'
+        type: function_point
+        name: 缺依赖时静默跳过
+        description: `import pyflakes` 失败即 `self.skipTest("pyflakes not installed")`——用例变成 skipped 而测试套件仍然 OK、退出码仍为 0。已实测复现：注入 import 拦截后 `Ran 1 test ... OK (skipped=1)`，skipped=1、failures=0。
+        spec: "`tests/test_static.py:14-17`；CI 装了 pyflakes，本机也装了（4.1.0），但这条保障可被环境静默移除"
+        input: 测试进程的依赖可用性
+        process: try/except ImportError → skipTest
+        output: skip 而非 fail
+      - id: '10702'
+        type: function_point
+        name: 子进程调用并过滤输出
+        description: `subprocess.run([sys.executable, "-m", "pyflakes", *文件])` 后只挑含 "undefined name" 或 "redefinition" 的行，其余（含 F401 未用导入）丢弃。
+        spec: "`result.returncode` 从不检查（`:27-38`）"
+        input: 生产包全部 .py 路径
+        process: 按子串过滤 stdout
+        output: 空列表=通过
+      - id: '10711'
+        type: function_constraint
+        name: 与 ruff 的职责重叠但不互替
+        description: CI 的 `ruff check custom_components tests --select F,E9` 已覆盖生产包的未定义名（实测 All checks passed），故 test_static 在 CI 中是冗余保险；但它只扫生产包，对 `tools/` 完全无覆盖——而 `tools/` 恰有真实的 F821（`tools/probe_retest_drops.py`）。
+  - id: '20'
+    type: directory
+    name: 真机现场分析探测域
+    description: 必须有真实投影仪在场的能力集合（20 个 .py + 1 个 .sh + 2 个 .json + README.md，`git ls-files tools` = 24 项）。全部脚本用 importlib 直载生产 `api.py`（20/20 命中），并与真实固件交互。
+    children:
+    - id: '201'
+      type: function
+      name: 探测固件命令能力
+      description: 对 `CONFIG_GET_*` / `CONFIG_SET_*` / `NOTIFY_*` 做逐个或矩阵式试探，记录 OK / FAIL / DROP / HANG 四种结局，并把结论增量落盘。对应 12 个 probe_*.py。
+      depends_on: ["101"]
+      node_context:
+        keywords: ["firmware_probe", "command_matrix", "capability_discovery", "result_vocabulary"]
+        code_mapping:
+          - "tools/probe_commands.py:28-120"
+          - "tools/probe_matrix.py:24-152"
+          - "tools/probe_remaining.py:27-85"
+          - "tools/probe_retest_drops.py:64-121"
+          - "tools/probe_round2.py"
+          - "tools/probe_round3.py"
+          - "tools/probe_round5.py"
+          - "tools/probe_round6.py"
+          - "tools/probe_round6b.py"
+      children:
+      - id: '20101'
+        type: function_point
+        name: 单命令全量扫描
+        description: 36 个短名逐个发 `CONFIG_GET_<名>`，params=None 先行；只有"非 DROP 且非 OK"才继续 0/1/2 参数变体，每步之间 sleep 1.5–2s。
+        spec: "`ALL` 36 项（`tools/probe_commands.py`）；`PARAM_VARIANTS = [None, \"0\", \"1\", \"2\"]`"
+        input: 投影仪 IP / 可选端口与短名过滤器
+        process: 健康探针 → 单发 → 记录 → 变体
+        output: 写入 probe_results.json
+      - id: '20102'
+        type: function_point
+        name: 参数矩阵分批试探
+        description: 命令 × 参数变体分批跑，已完成的命令自动跳过，可中断重跑；带 `wait_online` 等待上线与 3 次重试。
+        spec: "批大小 `BATCH = 9`（`tools/probe_matrix.py`）"
+        input: 同上
+        process: resilient_call 内 tcp 探测 + wait_online
+        output: 结论字符串 OK/FAIL/UNREACHABLE
+      - id: '20111'
+        type: function_constraint
+        name: 每次探测都可能卡死固件
+        description: NanoHTTPD 单线程，单次挂起即 8080 全不可用，只能重启设备或用 ADB `am force-stop` + `am start-service` 解卡（`tools/README.md:19-20`，`tools/probe_remaining.py`）。因此探测顺序必须按破坏性升序，且脚本自身不保证可重入。
+    - id: '202'
+      type: function
+      name: 验收真机功能
+      description: 对集成已实现的功能做真机回环验收：开关机、光源时长、按键、启动模式、刷新定时器、对焦。3 个 verify_*.py + experiment_set.py。
+      depends_on: ["101", "201"]
+      node_context:
+        keywords: ["device_acceptance", "roundtrip_verify", "restore_baseline", "manual_gate"]
+        code_mapping:
+          - "tools/verify_features.py:1-115"
+          - "tools/verify_full.py:1-128"
+          - "tools/verify_round4.py:1-84"
+          - "tools/experiment_set.py:1-91"
+      children:
+      - id: '20201'
+        type: function_point
+        name: 功能项逐条回环
+        description: 每个功能先读原值 → 写新值 → 读回比对 → 恢复原值，逐条打印 ✅/❌ 并汇总 `n/m 通过`。
+        spec: "`record()` 打印 ✅/❌（`tools/verify_features.py:23-29`），结束打印 `验证结果: n/m 通过`（`:105-111`）"
+        input: 投影仪 IP
+        process: 读写回环 + 汇总
+        output: 人读的通过率文本
+      - id: '20202'
+        type: function_point
+        name: 复刻实体层算法做对照
+        description: `verify_round4.py` 自己实现"马达停稳轮询"（连续两次 POS 读数一致视为停稳）来对照 `number.py` 的行为，而不是调用生产实现。
+        spec: "`settled()` 每 0.6s 轮询，超时 3–6s（`tools/verify_round4.py:29-39`）"
+        input: api 实例
+        process: 轮询 get_focus_position
+        output: 稳定后的位置
+      - id: '20211'
+        type: function_constraint
+        name: 结论不进入退出码
+        description: 三个 verify 脚本都只在用法错误时 `sys.exit(...)`（12 处），逻辑失败仅打印 "RESULT: FAIL" 后正常返回——实测 `python3 tools/verify_round4.py` 无设备时 rc=1 是异常冒泡所致，而非判定失败；一旦设备在场并判定 FAIL，脚本仍会以 rc=0 结束。
+    - id: '203'
+      type: function
+      name: 判别服务器健康与解卡
+      description: 系统化定位"是哪个命令把服务器打挂的"，并在挂起后用 ADB 重启 WebApi 服务恢复。
+      depends_on: ["101"]
+      node_context:
+        keywords: ["health_probe", "adb_unwedge", "server_hang", "diagnose"]
+        code_mapping:
+          - "tools/diagnose_state.py:1-60"
+          - "tools/probe_remaining.py:35-48"
+          - "tools/probe_commands.py:52-58"
+      children:
+      - id: '20301'
+        type: function_point
+        name: 逐条判别挂起责任
+        description: 对 5 条代表性命令（PRODUCT_NAME / LIGHT_TIME / SALES_AREA / PJ_STANDBY_MODE / KEYEVENT 26）逐个带 6s 超时执行，把结局分类为 200 / TIMEOUT / FAIL / UNAVAIL / ERR，再等 8s 复查电源态。
+        spec: "`asyncio.wait_for(..., timeout=6)`（`tools/diagnose_state.py:25-36`）"
+        input: 投影仪 IP
+        process: 逐条 try/except 五分支
+        output: 人读的判别表
+      - id: '20302'
+        type: function_point
+        name: ADB 重启 WebApi 服务
+        description: `adb -s <IP>:5555 shell "am force-stop ...; am start-service -n .../.EpsonWebApiServer"`。注释明确：必须用 `am start-service`，用 `am start-foreground-service` 会在 5 秒后被 Android 杀掉。
+        spec: "`tools/probe_remaining.py`，`timeout=15`"
+        input: 投影仪 IP（ADB 口 5555 需已开）
+        process: subprocess.run 一条 shell 串
+        output: 服务重启（输出被 capture 丢弃）
+      - id: '20311'
+        type: function_constraint
+        name: 解卡依赖 ADB 5555
+        description: 该能力假设投影仪已开网络调试且 `<IP>:5555` 可连（`tools/README.md:50-51`）；纯协议研究用不到它，但一旦服务器卡死又没有 ADB，就只剩人工断电重启。
+    - id: '204'
+      type: function
+      name: 存档探测结论
+      description: 把真机探测结果与固件枚举映射沉淀成两个 JSON 存档，供后续轮次与文档交叉引用。定位是"历史存档"，不是事实来源。
+      depends_on: ["201"]
+      node_context:
+        keywords: ["probe_archive", "enum_map", "result_schema", "historical_record"]
+        code_mapping:
+          - "tools/probe_results.json"
+          - "tools/enum_map.json"
+          - "tools/README.md:53-55"
+      children:
+      - id: '20401'
+        type: function_point
+        name: 记录命令探测矩阵
+        description: 结构为 `{短名: {参数键: 结局, "_done": bool}}`，实测 36 个条目全部 `_done=true`；参数键取字符串化的 None/"0"/"1"/"2"。
+        spec: "现有值分布：OK 50 / FAIL 30 / UNREACHABLE 12 / HANG 1；DROP 0 条"
+        input: 各 probe 脚本的结论
+        process: 逐条 json.dump（缩进 1）
+        output: 36 条的矩阵存档
+      - id: '20402'
+        type: function_point
+        name: 映射固件枚举名到 HAL 数值
+        description: 从设备 `epsonlogic.jar` 提取的三段结构：`SMFConfigID` 71 条、`SMFNotifyID` 27 条、`ConfigResultCode` 0 条（空桶）。
+        spec: "生产代码用到的 46 个 CONFIG_* 与 20 个 NOTIFY_* 全部能在映射里找到；反向有 25 个 CONFIG 枚举从未被使用"
+        input: 固件枚举清单
+        process: 人工/脚本提取为 name→int 字典
+        output: enum_map.json
+      - id: '20411'
+        type: function_constraint
+        name: 存档不是事实来源
+        description: 两个 JSON 都由多个脚本以不同词汇表写入（probe_commands 写 "DROP(服务器崩溃/断开)"、probe_matrix 写 "UNREACHABLE"、probe_remaining 写 "HANG(挂起)"），消费者 `probe_retest_drops.py` 只认 `startswith("DROP")`——当前存档里 0 条 DROP，该脚本即使修好 `wait_online` 也会选出 0 个命令。存档只能当线索，结论以重跑为准。
+    - id: '205'
+      type: function
+      name: 监视待机失联
+      description: 长期（100 轮 × 10s）观测 ping / 8080 / 5555 三路状态变化，并在首次失联时发 WOL 魔术包测试网络唤醒能力。
+      depends_on: []
+      node_context:
+        keywords: ["standby_watch", "wol", "timeline", "long_running"]
+        code_mapping:
+          - "tools/standby_watch.sh:1-56"
+      children:
+      - id: '20501'
+        type: function_point
+        name: 三路状态采样
+        description: 每 10s 采一次 `ping -c1 -W1`、`nc -z 8080`、`nc -z 5555`，状态串变化才写日志，否则只追加一行。
+        spec: "`for i in $(seq 1 100)`（`:33`），日志 `/tmp/standby_watch.log`"
+        input: 投影仪 IP + 可选 MAC/广播地址
+        process: 三路探测 + 状态机
+        output: 时间线日志
+      - id: '20502'
+        type: function_point
+        name: 魔术包试探网络唤醒
+        description: 构造 6×0xFF + 16×MAC 的 102 字节包，向广播地址的 9/7 端口各发一次，5 秒内 ping 不通才发。
+        spec: "`printf '\\xff%.0s' {1..6}` + 16 次 MAC（`:19-24`）"
+        input: MAC 与广播地址
+        process: xxd -r -p 拼二进制后 nc -u
+        output: 日志中的"WOL 唤醒成功/无效果"
+      - id: '20511'
+        type: function_constraint
+        name: 依赖 GNU 风格工具参数
+        description: `nc -z -G 2` 与 `ping -W1`、`nc -u -w 1 -b` 的语义在 macOS 与 GNU netcat 上不一致（macOS nc 无 `-G`），脚本无平台探测，跨平台运行可能静默给出错误状态。
+  - id: '30'
+    type: directory
+    name: 门禁执行域
+    description: 唯一自动化门禁，声明在 `.github/workflows/tests.yml`（24 行、4 个 step），push 与 PR 均触发。
+    children:
+    - id: '301'
+      type: function
+      name: 执行 CI 门禁
+      description: 在 ubuntu-latest + Python 3.13 上装 `aiohttp ruff pyflakes` 三个包，跑 lint 与 unittest 两条命令。不装 homeassistant，不跑 hassfest/HACS 校验，范围不含 tools/。
+      depends_on: ["101", "106", "107"]
+      node_context:
+        keywords: ["ci_gate", "ruff", "unittest_discover", "coverage_boundary"]
+        code_mapping:
+          - ".github/workflows/tests.yml:1-24"
+      children:
+      - id: '30101'
+        type: function_point
+        name: 语法级 lint
+        description: `ruff check custom_components tests --select F,E9`——只拦 pyflakes 类未定义名与语法错误，不拦风格、不拦未使用导入、不拦复杂度；且不读任何 ruff 配置文件（仓库无 pyproject/ruff.toml）。
+        spec: "实测 rc=0，All checks passed!"
+        input: 源码树
+        process: ruff 命令行规则集
+        output: 通过/失败
+      - id: '30102'
+        type: function_point
+        name: 离线单元测试
+        description: `python -m unittest discover -s tests -v`——与本地 `discover` 完全等价，实测 Ran 64 tests OK；这是唯一能覆盖 pytest 直跑缺陷（`unittest.main()` 位置错误）的执行方式。
+        spec: "实测 64 tests / OK / rc=0"
+        input: tests/ 4 文件
+        process: unittest discover 导入全部 4 模块
+        output: 通过/失败
+      - id: '30111'
+        type: function_constraint
+        name: 门禁不覆盖 HA 装配层
+        description: CI 从不安装 homeassistant，而 12/14 个生产模块 import 它（`__init__.py:6-11`、`number.py:8-16` 等）。实测 `python3 -c "import homeassistant"` → ModuleNotFoundError、rc=1。因此装配、平台注册、迁移逻辑在 CI 中零覆盖——历史上 BLOCKER-1 正是从这里漏过。
+      - id: '30112'
+        type: function_constraint
+        name: 门禁不覆盖 tools
+        description: lint 范围只有 `custom_components tests`；`ruff check .` 实测 3 errors、rc=1（`tools/diagnose_state.py:5`、`tools/probe_phase23.py` F401；`tools/probe_retest_drops.py` F821），全部落在门禁之外，CI 依旧全绿。
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+#   本模块参与的全局 function 节点 id: 81, 82, 83, 84
+#   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
+#         两者通过上述 id 对齐, 模块边界不因合并而改变。
+# ─────────────────────────────────────────────────────────────────────────────

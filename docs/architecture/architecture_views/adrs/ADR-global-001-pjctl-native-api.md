@@ -22,9 +22,9 @@ accepted（v2 起生效；v1 的 ADB 路径已无任何调用点，仅保留迁�
 
 ## 1. 背景
 
-**业务背景**：Epson EF 系列（HB7x 平台，Android 13 国内特供）不提供 PJLink(4352)、ESC/VP21(3629) 或可用的 Web 管理界面（逐端口探测全部 `Connection refused`；相关文档已于 2026-11-09 移除）。用户需要的是"开箱即用、固件升级后仍可用"的控制能力。
+**业务背景**：Epson EF 系列（HB7x 平台，Android 13 国内特供）不提供 PJLink(4352)、ESC/VP21(3629) 或可用的 Web 管理界面（逐端口探测全部 `Connection refused`；）。用户需要的是"开箱即用、固件升级后仍可用"的控制能力。
 
-**技术背景**：设备上运行 `WebApiSrv`（NanoHTTPD），在 TCP 8080 暴露 `POST /api/pjctl` 的原生 JSON API，后端经 `EpsonManager → IProjectorControl.config()` 调系统服务 `EpsonService`（`docs/reference/protocol.md`）。认证为 HTTP Digest（MD5, qop=auth），凭据内置固件。
+**技术背景**：设备上运行 `WebApiSrv`（NanoHTTPD），在 TCP 8080 暴露 `POST /api/pjctl` 的原生 JSON API，后端经 `EpsonManager → IProjectorControl.config()` 调系统服务 `EpsonService`（`const.py` 的协议注释）。认证为 HTTP Digest（MD5, qop=auth），凭据内置固件。
 
 **核心问题**：在"官方无文档、无标准协议、不想让用户开 USB/网络调试"的约束下，用什么通道控制投影仪？
 
@@ -38,7 +38,7 @@ accepted（v2 起生效；v1 的 ADB 路径已无任何调用点，仅保留迁�
 
 1. **开箱即用**（高）：ADB 需用户手动开启网络调试并授权 RSA，属不可接受的门槛。
 2. **固件升级存活**（高）：ADB 授权在部分固件更新/恢复出厂后失效；WebApiSrv 是系统服务，随开机自启。
-3. **能力覆盖**（高）：pjctl 暴露 40 个 GET + 31 个 SET + 27 个 NOTIFY（`docs/reference/protocol.md` 的枚举统计），覆盖开关机、按键、画面、对焦、几何、氛围灯。
+3. **能力覆盖**（高）：pjctl 暴露 40 个 GET + 31 个 SET + 27 个 NOTIFY（`const.py` 的协议注释 的枚举统计），覆盖开关机、按键、画面、对焦、几何、氛围灯。
 4. **零第三方依赖**（中）：`aiohttp` 是 HA core 自带（`api.py:14`），满足空 requirements。
 
 ## 3. 候选方案
@@ -73,6 +73,6 @@ accepted（v2 起生效；v1 的 ADB 路径已无任何调用点，仅保留迁�
 
 ## 备注
 
-- 端口探测过程与命令覆盖状态见 `docs/reference/coverage-matrix.md`。
+- 端口探测过程与命令覆盖状态见 固件行为记录。
 - 未采纳的 upload/download 路由（`/api/pjctl_upload`、`/api/pjctl_download`）当前不暴露。
-- ADB 仍被 `tools/` 下的排障脚本使用（解卡 WebApiSrv），但**不进入集成**（`tools/probe_remaining.py`）。
+- ADB 不进入集成代码；设备若已开启网络调试，可用于手工排障。

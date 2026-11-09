@@ -7,7 +7,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 
 # 开发视图（源码结构与开发者视角）
 
-> 适用范围：`custom_components/epson_ef/`（14 个 .py，共 3 055 行）为唯一运行物；`tools/`（20 个 .py + 1 个 .sh + 2 个 .json）为真机探测脚本；`tests/`（4 个 .py，共 1 020 行）为离线单测；`docs/`（5 个 .md）为现场分析记录。
+> 适用范围：`custom_components/epson_ef/`（14 个 .py，共 3 055 行）为唯一运行物；`tools/`（2 个脚本 + 1 个枚举清单）为真机排障与验收脚本；`tests/`（4 个 .py，共 1 020 行）为离线单测；`docs/architecture/` 为代码知识库。
 > 本视图与 logical_view §1 互补：本节只回答「谁构建出什么、源在哪、产物去哪、怎么验证」。
 
 ## 1. 源码仓库工程结构
@@ -27,7 +27,7 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 │   ├── strings.json + translations/   # en / zh-Hans（三方 145 键完全对齐）
 │   └── icon*.png / logo*.png          # HACS/HA 展示资产
 ├── tests/                             # 离线单测，不 import homeassistant（4 文件 / 64 用例）
-├── tools/                             # 真机验证脚本，20/20 通过 importlib 直载 api.py
+├── tools/                             # 真机验证脚本，通过 importlib 直载 api.py
 ├── docs/                              # PROTOCOL / REVERSE_METHODOLOGY / AUDIT_COVERAGE / RELEASE_TEST_REPORT / FIRMWARE_AUDIT
 ├── .github/workflows/tests.yml        # 唯一 CI（ruff + unittest）
 ├── hacs.json                          # ★ HACS 安装契约：homeassistant 最低版本
@@ -38,7 +38,7 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | 构建产物 | 源码根 | 构建目标 | 对应运行时单元（deployment §2） |
 |-|-|-|-|
 | `epson_ef` 集成目录（无编译，源码即产物） | `custom_components/epson_ef/` | HACS 下载后落到 HA 的 `<config>/custom_components/epson_ef/`；手动方式为 `rsync` 整目录 | HA 进程内加载的自定义集成（`manifest.json:2` domain=`epson_ef`） |
-| 探测脚本（非交付物） | `tools/` | 仓库内原地执行，无打包 | 开发者工作站侧临时进程 |
+| 验证脚本（非交付物） | `tools/` | 仓库内原地执行，无打包 | 开发者工作站侧临时进程 |
 | 单测套件（非交付物） | `tests/` | 无 | 无（CI 内进程） |
 
 **发布契约事实（manifest.json:13 行全文）**：`"version": "3.10.0"`；`"requirements": []`（`manifest.json:12`）；`"dependencies": []`（`manifest.json:8`）；`"iot_class": "local_polling"`（`manifest.json:10`）；`"config_flow": true`（`manifest.json:7`）。
@@ -59,7 +59,7 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | 测试 | `python3 -m pytest tests/ -q` → **64 passed，rc=0**（实测）；或 `python3 -m unittest discover -s tests -v` → **Ran 64 tests，OK，rc=0**（实测，与 CI 同款） | 二者等价，见 §3 |
 | 测试（单文件直跑） | `python3 tests/test_api.py` → **Ran 42 tests**；`python3 tests/test_regressions.py` → **Ran 7 tests**（实测） | 两个文件的 `unittest.main()` 都不在文件末尾（`tests/test_api.py:507`、`tests/test_regressions.py:183`），其后定义的 4 个类（11 个用例）不会执行；**必须用 discover/pytest** |
 | 静态检查（CI 同款） | `ruff check custom_components tests --select F,E9` → **All checks passed!，rc=0**（实测） | 范围不含 `tools/`，规则仅 pyflakes 类 |
-| 静态检查（仓库全量，默认规则） | `ruff check .` → **3 errors，rc=1**（实测） | 全部落在 `tools/`：`tools/diagnose_state.py:5`、`tools/probe_phase23.py`（F401 未用 `json`）、`tools/probe_retest_drops.py`（F821 `wait_online` 未定义） |
+| 静态检查（仓库全量，默认规则） | `ruff check .` → **All checks passed!**（实测） | 与 CI 同款命令结果一致 |
 | 名字级静态检查（测试内嵌） | `python3 -m unittest tests.test_static -v`（依赖 `pyflakes`） | 只扫 `custom_components/epson_ef/*.py`，仅判 `undefined name` / `redefinition`（`tests/test_static.py:33-37`） |
 | 产物校验 | 不适用 —— 无产物可校验 | 等价物是 HA 内 reload 后实体可用性，属人工/真机验证 |
 
@@ -70,8 +70,8 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | Python 运行时依赖 | **无清单**：`manifest.json:12` `requirements: []`、`:8` `dependencies: []`；仓库根无 requirements/pyproject/setup.py | 无锁 | 含义：集成不自带第三方包，全部依赖 HA 运行时已装的库 |
 | 第三方 import 实测面 | 生产代码仅两处：`import aiohttp`（`api.py:14`）、`import voluptuous as vol`（`config_flow.py:6`、`services.py:6`） | 跟随 HA | aiohttp 与 voluptuous 都是 HA core 自带依赖，故 `requirements: []` 自洽 |
 | 其余 import | 全为 stdlib：`asyncio/hashlib/logging/random/re`（`api.py:7-11`）、`datetime`（`coordinator.py:6`）、`typing`（各平台） | — | 证明"只依赖 HA 提供的包"成立 |
-| HA 侧 API 依赖 | `homeassistant.*` 仅在非 api 模块出现（`coordinator.py:9-11`、`__init__.py:6-11`），`api.py` 显式保持零 HA import（`api.py:1-3` 文档字符串声明 "no Home Assistant imports so it can be tested standalone"） | 由 `hacs.json:3` 的 2024.4.0 约束 | 注：该 2024.4.0 为声明值，`docs/reports/v3.10.0-release-test.md:7` 实测环境为 HA 2026.9.3，下界未经验证（`[待确认: 2024.4.0 是否为真实最低可运行版本?]`） |
-| Python 版本 | 无 `python_requires`；CI 固定 `python-version: "3.13"`（`.github/workflows/tests.yml:15`）；本地实测 `Python 3.13.13`；真机 HA 运行 `Python 3.14`（`docs/reports/v3.10.0-release-test.md:7`） | CI 锁 3.13 | 三处版本不一致，无单一权威声明 |
+| HA 侧 API 依赖 | `homeassistant.*` 仅在非 api 模块出现（`coordinator.py:9-11`、`__init__.py:6-11`），`api.py` 显式保持零 HA import（`api.py:1-3` 文档字符串声明 "no Home Assistant imports so it can be tested standalone"） | 由 `hacs.json:3` 的 2024.4.0 约束 | 注：2024.4.0 为声明值，CI 与本地测试均未覆盖该下界 |
+| Python 版本 | 无 `python_requires`；CI 固定 `python-version: "3.13"`（`.github/workflows/tests.yml:15`）；本地实测 `Python 3.13.13`；真机 HA 运行 `Python 3.14`（真机运行 Python 3.14） | CI 锁 3.13 | 三处版本不一致，无单一权威声明 |
 | 测试期依赖 | CI `pip install aiohttp ruff pyflakes`（`.github/workflows/tests.yml:18`）；**不装 homeassistant** | 不锁版本 | 故 CI 只覆盖"不 import HA 的代码" |
 | 工具链版本痕迹 | `.ruff_cache/0.15.15/` 目录存在（含 5 个缓存条目）→ 本地用 ruff 0.15.15 跑过；本机 `ruff --version` = 0.15.15 | 无配置锁定 | 仓库无 ruff 配置文件，规则全靠命令行 `--select` |
 
@@ -85,11 +85,11 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | 检查范围 | CI 只查 `custom_components tests`；**`tools/` 被排除** | `.github/workflows/tests.yml:21` |
 | pyflakes | CI 装上并再由 `tests/test_static.py` 二次调用；不可用时 skip | `.github/workflows/tests.yml:18`、`tests/test_static.py:14-17` |
 | `.editorconfig` | **不存在** | `ls .editorconfig` → No such file |
-| `CONTRIBUTING.md` | **不存在**（协作规范仅隐含在 `README.md`；原 `SECURITY.md` 已于 2026-11-09 移除） | `ls CONTRIBUTING.md` → No such file |
+| `CONTRIBUTING.md` | **不存在**（协作规范仅隐含在 `README.md`；） | `ls CONTRIBUTING.md` → No such file |
 | 类型注解覆盖 | 生产代码 **165/166 个函数有返回注解 = 99.4%**（AST 统计，`AnnAssign`/`FunctionDef.returns`）；唯一缺项是 `services.py:15` 的 `_resolve_api` | 本次 `ast` 实测：files 14 / funcs 166 / annotated 165 |
 | 类型检查器 | **无**（无 mypy/pyright 配置与 CI 步骤），注解不参与门禁 | `.github/workflows/tests.yml:17-24` 仅 4 个 step |
 | 风格约定（代码内观察到的事实） | 统一 `from __future__ import annotations`（14/14 文件首部）、模块/类级中文 docstring、`_LOGGER` 每模块一个、常量集中在 `const.py`、实体类统一 `Ef50*` 前缀 | `api.py:2`、`number.py:2-38`、`switch.py:25`、`const.py` 整体 |
-| 门禁宽严 | 门禁只拦「语法级/未定义名」错误（F,E9），不拦风格、不拦未使用导入、不拦复杂度 | `.github/workflows/tests.yml:21`；`ruff check .` 实测 3 errors 仍可通过 CI（全在 `tools/`） |
+| 门禁宽严 | 门禁只拦「语法级/未定义名」错误（F,E9），不拦风格、不拦未使用导入、不拦复杂度 | `.github/workflows/tests.yml:21`；`ruff check .` 与 CI 同款命令结果一致 |
 
 ## 3. 测试策略与布局
 
@@ -101,9 +101,9 @@ graph LR
         T3["test_const_contract.py<br/>3 用例：AST 契约（表宽 = 解包宽）"]
         T4["test_static.py<br/>1 用例：pyflakes 未定义名"]
     end
-    subgraph 真机层 hw["tools/（20 脚本，需真实投影仪）"]
-        P1["probe_*/diagnose_*<br/>协议探测与回环"]
-        P2["verify_*/experiment_set.py<br/>功能验收（会开关机）"]
+    subgraph 真机层 hw["tools/（2 脚本，需真实投影仪）"]
+        P1["diagnose_state.py<br/>连接异常排障"]
+        P2["verify_full.py<br/>功能验收（会开关机）"]
     end
     subgraph CI["CI（.github/workflows/tests.yml）"]
         C1["ruff check custom_components tests --select F,E9"]
@@ -123,7 +123,7 @@ graph LR
 | 回归（真机缺陷固化） | `tests/test_regressions.py`（219 行，9 用例） | 同上 | 对焦闭环三性质（`tests/test_regressions.py:38`）、遗留实体清理表（`:96`）、`async_get_entity_id` 实参顺序（`:141`）、coordinator 确实遍历两张可写表（`:173`）、不可达必须有 `EpsonApiUnavailable` 语义（`:186`） |
 | 契约（AST 而非 import） | `tests/test_const_contract.py`（146 行，3 用例） | 同上；`TABLE_SOURCES` 定义在 `tests/test_const_contract.py:27` | 表非空/等宽（`tests/test_const_contract.py:92`）、每个解包点宽度 == 表宽（`:111`）、已知消费者位置不得漂移（`:127`） |
 | 静态（名字级） | `tests/test_static.py`（42 行，1 用例） | 同上；**无 pyflakes 时 `skipTest`**（`tests/test_static.py:14-17`） | 只查 `undefined name`/`redefinition`，范围仅 `custom_components/epson_ef`（`tests/test_static.py:19-38`） |
-| 真机验证（非单测） | `tools/`（20 脚本） | `python tools/<name>.py <投影仪IP>` 或 `export EPSON_HOST=...`（`tools/README.md:8-15`） | 固件命令可用性/回环（`tools/probe_*.py`）、功能验收（`tools/verify_*.py`）、长时监视（`tools/standby_watch.sh`）；脚本通过 `importlib` 直载 `custom_components/epson_ef/api.py`（20/20 命中，如 `tools/diagnose_state.py:11-21`） |
+| 真机验证（非单测） | `tools/`（2 脚本） | `python tools/<name>.py <投影仪IP>` 或 `export EPSON_HOST=...`（`tools/README.md`） | 连接异常排障（`diagnose_state.py`）、功能与深待机唤醒验收（`verify_full.py`）；脚本通过 `importlib` 直载 `custom_components/epson_ef/api.py`（如 `tools/diagnose_state.py:11-21`） |
 | E2E / 集成（含 HA 运行时） | **不存在** | 无 | 无 HA 测试夹具、无 `pytest-homeassistant-custom-component`、无 `conftest.py`；实体装配、coordinator 与 HA 生命周期从未被自动化执行 |
 
 **实测记录（本次在 base_commit 上真实执行）**：
@@ -152,7 +152,7 @@ graph LR
 | 5. 本地改代码 | 直接编辑 `.py`，无编译/无生成步骤 | 无 Makefile，无热重载；改完 `rsync` 到 HA（`README.md:131-135`） |
 | 6. 跑测试 | 离线套件（秒级） | `python3 -m pytest tests/ -q` 或 `python3 -m unittest discover -s tests -v` |
 | 7. 静态检查 | CI 同款两行 | `ruff check custom_components tests --select F,E9` |
-| 8. 真机验证 | 用 tools 脚本对照固件行为（会改设备状态，注意脚本告警） | `tools/README.md:17-22`；如 `python tools/probe_focus.py <IP>` |
+| 8. 真机验证 | 用 tools 脚本对照设备行为（`verify_full.py` 会开关机） | `tools/README.md`；如 `python tools/verify_full.py <IP>` |
 | 9. 提交规范 | **无 CONTRIBUTING、无 pre-commit、无 commit 规范文件**；CI 在 push/PR 自动跑 | `.github/workflows/tests.yml:3-5` |
 
 **真实示例：改「对焦」逻辑（number 实体）——从仓库根到一行代码的完整链路**
@@ -165,7 +165,7 @@ graph LR
 | ④ 写通路（改这里） | `number.py:282-301` | `async_set_native_value` → `api.goto_focus(target)`（`:290`），成功后回写 `settings["focus_position"]`（`:297`）并 `async_request_refresh()`（`:301`） |
 | ⑤ 算法本体 | `api.py:544-584` | 闭环：读 POS → 算剩余 → 定时 `focus_move_start` → `finally` 里必定 `focus_move_stop`（`api.py:575-582`）→ 轮询到容差内 |
 | ⑥ 已有测试护栏 | `tests/test_regressions.py:38-94`（闭环、取消时必发 OFF、常量 `FOCUS_STEP_UNIT==1`）、`tests/test_api.py:511-568`（`MAX/MIN/OFF` 载荷、收敛、POS 不可读返回 None） | 改算法前先读这两处，改完必须仍绿 |
-| ⑦ 验证 | `python3 -m pytest tests/ -q`（64 passed）；真机 `python tools/probe_focus.py <IP>`（只发单步，`tools/README.md:43`） | — |
+| ⑦ 验证 | `python3 -m pytest tests/ -q`（64 passed）；真机 `python tools/diagnose_state.py <IP>` 确认通路可用 | — |
 
 > 同一路径可套用到任何实体：`const.py` 表/常量 → 平台 `async_setup_entry` 枚举 → coordinator 读 → 实体 setter 写 → `api.py` 命令 → `tests/` 护栏。
 
@@ -178,11 +178,11 @@ graph LR
 | 产线构建 | **不适用** —— 无编译产物、无镜像、无签名；分发物就是 `custom_components/epson_ef/` 目录源码 | 无 | 版本号手工写在 `manifest.json:13`，无 tag/无 release workflow 兜底（仓库 0 tag、0 remote，`.github/workflows/` 仅 `tests.yml`） |
 | 用户部署 | HACS 自定义存储库 / 手动 rsync（`README.md:121-135`） | 与开发目录内容一致（同目录整包） | 版本一致性无自动化保障：HACS 依 `hacs.json:3` 判最低 HA 版本，HA 依 `manifest.json:13` 显示版本 |
 
-**关键一致性缺口（事实）**：CI 从不安装 `homeassistant`，而全部 7 个平台模块、`config_flow`、`services`、`diagnostics`、`__init__` 都 import HA（如 `__init__.py:6-11`、`number.py:8-16`）。因此 `manifest.json` 声明的 HA API 兼容性、实体装配、迁移逻辑在 CI 中**零覆盖**，只能靠真机回归（`docs/reports/v3.10.0-release-test.md:5-10` 记录的唯一验证方式是"整目录替换 + 重启 HA"）。
+**关键一致性缺口（事实）**：CI 从不安装 `homeassistant`，而全部 7 个平台模块、`config_flow`、`services`、`diagnostics`、`__init__` 都 import HA（如 `__init__.py:6-11`、`number.py:8-16`）。因此 `manifest.json` 声明的 HA API 兼容性、实体装配、迁移逻辑在 CI 中**零覆盖**，只能靠真机回归（唯一验证方式是"整目录替换 + 重启 HA"）。
 
 ---
 
-## 附录：Gap Backfill 自检（落盘前逐项核对）
+## 编写自检
 
 | 模板节 | 状态 | 证据/结论 |
 |-|-|-|
@@ -196,15 +196,13 @@ graph LR
 
 ---
 
-## 附录 B：工程侧风险候选（供 risk.md 汇总，非模板节）
+## 附录：工程侧风险清单
 
 | # | 风险 | 证据 | 影响 |
 |-|-|-|-|
-| D1 | `tools/` 无任何门禁且已有真错：F821 `wait_online` 未定义（一跑即 NameError）、2 处 F401 | `tools/probe_retest_drops.py`（无 `wait_online` 定义，`grep "def "` 仅见 `tcp_online`/`wait_server_ready`）、`tools/diagnose_state.py:5`、`tools/probe_phase23.py`；CI 范围 `--select F,E9` 不含 `tools/`（`.github/workflows/tests.yml:21`） | 探测脚本静默腐化；真机排障时脚本先崩，误导根因 |
+| D1 | `tools/` 不在 CI lint 范围内 | CI 范围 `--select F,E9` 只查 `custom_components tests`（`.github/workflows/tests.yml:21`） | 脚本改动不会让 CI 变红 |
 | D2 | 测试存在结构缺陷：`unittest.main()` 被放在文件中部的类之间，其后定义的类在直跑时被跳过 | `tests/test_api.py:507-508` 后紧跟 `FocusAbsoluteTests`（`:511`）、`ReadHelperTests`（`:569`）、`PowerStateTests`（`:595`）；`tests/test_regressions.py:183-184` 后紧跟 `UnreachableProjectorTests`（`:186`） | 实测 `python3 tests/test_api.py` 只跑 42/64、`python3 tests/test_regressions.py` 只跑 7/9；两个文件共 4 个类、11 个用例（9+2）仅在 `discover`/`pytest` 下才会执行，开发者直跑会误以为全绿 |
-| D3 | HA 运行时零自动化覆盖：CI 从不安装 `homeassistant`，却存在 7 个平台模块 + config_flow + services + diagnostics 全量 import HA | `.github/workflows/tests.yml:18`；`__init__.py:6-11`、`number.py:8-16`、`config_flow.py:7-10` | 装配错误（如 3.10.0 的 `WRITABLE_SELECTS` 解包宽度）只能在真机暴露，历史已发生过一次全实体不可用（`docs/reports/v3.10.0-release-test.md:16-20`） |
-| D4 | `pytest` 未被声明为依赖，但 `tests/` 被写成 pytest 可发现形态；本地可用纯属环境自带 | 无 requirements/pyproject；`.github/workflows/tests.yml:18` 只装 `aiohttp ruff pyflakes`；实测本机 `pytest` 9.1.1 可跑 | 换机/换 CI 镜像即"命令不存在"，文档中 `pytest tests/` 的跑法不可移植（`docs/reports/v3.10.0-release-test.md:32` 已这么写） |
+| D3 | HA 运行时零自动化覆盖：CI 从不安装 `homeassistant`，却存在 7 个平台模块 + config_flow + services + diagnostics 全量 import HA | `.github/workflows/tests.yml:18`；`__init__.py:6-11`、`number.py:8-16`、`config_flow.py:7-10` | 装配错误（如 3.10.0 的 `WRITABLE_SELECTS` 解包宽度）只能在真机暴露，历史已发生过一次全实体不可用（见 `tests/test_const_contract.py:1-9`） |
+| D4 | `pytest` 未被声明为依赖，但 `tests/` 被写成 pytest 可发现形态；本地可用纯属环境自带 | 无 requirements/pyproject；`.github/workflows/tests.yml:18` 只装 `aiohttp ruff pyflakes`；实测本机 `pytest` 9.1.1 可跑 | 换机/换 CI 镜像即"命令不存在"，文档中 `pytest tests/` 的跑法不可移植 |
 | D5 | 版本/发布完全手工：0 tag、0 remote、无 release workflow，版本号仅 `manifest.json:13` 一处 | `git tag --list` 空、`git for-each-ref` 仅 `refs/heads/main`、`git remote -v` 空、`.github/workflows/` 仅 `tests.yml` | HACS 依 manifest version 判定更新，漏改即"装了新版但 HA 显示旧版" |
 | D6 | `ruff` 无配置锁定、无版本约束：CI `pip install ruff` 浮动，规则靠命令行 | `.github/workflows/tests.yml:18,21`；无 ruff 配置文件 | 上游默认规则集变化不会影响 CI（因 `--select` 固定），但本地 `ruff check .` 与 CI 语义不同，易产生"本地红 CI 绿"的认知错位（实测：本地 `ruff check .` rc=1，CI 同款 rc=0） |
-| D7 | 测试替身与生产实现存在双份"事实"：`tools/verify_round4.py` 自己复刻了 `STEP_UNIT = 10` 的旧对焦假设 | `tools/verify_round4.py:23-26`（`STEP_UNIT = 10`、`MAX_STEPS = 30`）vs `const.py:122` `FOCUS_STEP_UNIT = 1` 与 `api.py:516-529` 的纠正注释 | 用该脚本验证对焦会得到与集成不同的结论，浪费真机时间 |
-| D8 | 测试硬编码真实内网地址作为"真实场景"注释，仓库外泄面 | `tests/test_regressions.py:192`（`192.168.61.250`）、`tools/probe_focus.py:28`/`tools/verify_round4.py:23`（`192.168.61.7`）默认值 | 与 `tools/README.md:8`"不提供默认值"的声明矛盾（4 个脚本仍带默认 IP：`probe_focus.py`/`probe_power_state.py`/`probe_refresh.py`/`verify_round4.py`），且泄露作者内网拓扑 |

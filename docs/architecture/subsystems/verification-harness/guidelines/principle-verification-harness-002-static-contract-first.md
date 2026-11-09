@@ -30,9 +30,9 @@ principle_scope: module
 
 ## 为什么要这样
 
-- **真实事故驱动**：`tests/test_const_contract.py:1-9` 记录了唯一一次 release-blocking 事故——`WRITABLE_SELECTS` 从 5 元组扩到 6 元组，`select.py` 同步改了，`coordinator.py:97` 漏改。静态检查（当时的 ruff F,E9）与既有单测**都没抓到**，因为待机时该分支不执行。真机部署后每次诊断轮询抛 `ValueError`，58 个实体全部 unavailable（`docs/reports/v3.10.0-release-test.md:16-22`）。
+- **真实事故驱动**：`tests/test_const_contract.py:1-9` 记录了唯一一次 release-blocking 事故——`WRITABLE_SELECTS` 从 5 元组扩到 6 元组，`select.py` 同步改了，`coordinator.py:97` 漏改。静态检查（当时的 ruff F,E9）与既有单测**都没抓到**，因为待机时该分支不执行。真机部署后每次诊断轮询抛 `ValueError`，58 个实体全部 unavailable（`tests/test_const_contract.py` 的 docstring 有记录）。
 - **AST 比 import 更"抗环境"**：`test_const_contract.py` 的 `TABLE_SOURCES` 里 `BUTTON_DEFS` 定义在 `button.py`，而 `button.py` 有 7 处 `homeassistant` import——根本无法导入。AST 让它照样能被契约覆盖。
-- **有效性已被反证过**：`docs/reports/v3.10.0-release-test.md:29` 记载"已用'注入 bug → 测试必须失败'验证有效性"。这是全项目唯一有记录的测试有效性验证。
+- **有效性已被反证过**：测试有效性通过"注入 bug → 测试必须失败"的方式验证过。这是全项目唯一有记录的测试有效性验证。
 - **静态契约的成本是显式的**：它只看结构，不看语义。表里某列的**含义**（如 `WRITABLE_SELECTS` 第 5 列是 options、第 6 列是 labels）它不知道，因此"两列写反但宽度不变"是它抓不到的——这个缺口必须靠行为用例补。
 
 ## 适用范围
@@ -64,6 +64,6 @@ principle_scope: module
 - [ ] 改表宽度时，是否同一次提交内更新了全部解包点，并确认 `test_every_consumer_unpacks_full_width` 仍绿？
 - [ ] 新增表时是否登记进 `TABLE_SOURCES`（`tests/test_const_contract.py:27-32`）？值是否指向正确的源文件？
 - [ ] 新增表的消费位置是否加进了 `test_known_consumer_locations` 的 `expected` 集合（`:129-136`）？
-- [ ] 是否有测试证明契约真的会失败？（参照 `docs/reports/v3.10.0-release-test.md:29` 的"注入 bug"做法）
+- [ ] 是否有测试证明契约真的会失败？（"注入 bug → 测试必须失败"）
 - [ ] 扫描器是否仍能覆盖新的语法形态（推导式/异步推导式/match）？
 - [ ] 失败信息里是否包含 `文件:行号` 与"为什么这是运行时错误"？

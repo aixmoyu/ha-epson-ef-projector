@@ -22,7 +22,7 @@ accepted
 
 **业务背景**：58 个实体需要持续反映设备状态（电源、灯时、20 项诊断、10 项可写设置的当前值），而用户对电源状态变化的感知延迟要求最高（默认 15s 内）。
 
-**技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（8080），且固件 NanoHTTPD 疑似单线程：行为记录表明某些查询会挂住整个服务（`docs/reference/coverage-matrix.md`；生产代码注释亦承认"some commands hang the HTTP thread"，`api.py:340-346`）。设备无推送能力（`manifest.json:10` `iot_class=local_polling`）。
+**技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（8080），且固件 NanoHTTPD 疑似单线程：行为记录表明某些查询会挂住整个服务（固件行为记录；生产代码注释亦承认"some commands hang the HTTP thread"，`api.py:340-346`）。设备无推送能力（`manifest.json:10` `iot_class=local_polling`）。
 
 **核心问题**：如何在"只读命令数量多（40 个 GET）"与"固件承受能力弱、且要求电源态刷新快"之间取平衡？
 

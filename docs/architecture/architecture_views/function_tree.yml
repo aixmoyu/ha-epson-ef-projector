@@ -33,8 +33,6 @@
 #     （media_player.py:207-216），音量是无状态按键注入（:201-205），
 #     状态模型完全不同 → 保持独立。
 #
-# 校验: node .agents/skills/aet-project-analysis2/scripts/validate-function-tree.mjs \
-#         docs/architecture/architecture_views/function_tree.yml
 # ════════════════════════════════════════════════════════════════════════════
 - id: '1'
   type: directory
@@ -1292,7 +1290,6 @@
       node_context:
       keywords: ["probe_scripts", "live_verification", "adb_recovery"]
       code_mapping:
-        - "tools/verify_features.py"
         - "tools/verify_full.py"
         - "tools/diagnose_state.py"
       children:
@@ -1300,7 +1297,7 @@
         type: function_point
         name: 命令能力扫描
         description: 逐条试固件命令并观察设备响应；脚本通过 importlib 直载生产 `api.py`，因此验证的是集成实际下发的命令。
-        spec: "`tools/diagnose_state.py`、`tools/verify_features.py`；加载方式见 `tools/diagnose_state.py`。"
+        spec: "`tools/diagnose_state.py`（加载方式见该文件 `:11-21`）。"
         constraint: 部分命令会挂住固件单线程服务，需健康监护与解卡。
         input: 设备 IP
         process: 遍历 + 记录
@@ -1309,8 +1306,8 @@
         type: function_point
         name: 功能回环验收
         description: 对开关机、亮度、对焦、几何等逐项做读写回环验收（会改变设备状态）。
-        spec: "`tools/verify_features.py`、`tools/verify_full.py`、`tools/verify_round4.py`。"
-        constraint: 结论不进入退出码（逻辑失败只 print），且 `verify_round4.py:24` 复刻了旧的 ±10 步长假设，与 `const.py:122` 矛盾。
+        spec: "`tools/verify_full.py`。"
+        constraint: 结论不进入退出码（逻辑失败只 print），仅适合人工判读。
         input: 设备 IP
         process: 真机操作
         output: 人工判读的验收记录
@@ -1330,7 +1327,7 @@
     - id: '84'
       type: function
       name: 执行 CI 门禁
-      description: 每次 push/PR 跑语法级 lint 与离线单测；范围不含 tools/，环境不装 homeassistant。
+      description: 每次 push/PR 跑语法级 lint、离线单测、hassfest 清单校验与 HACS 仓库结构校验；环境不装 homeassistant。
       module_refs: ["verification-harness"]
       depends_on: ["82"]
       node_context:
@@ -1343,7 +1340,7 @@
         name: 语法级 lint
         description: `ruff check custom_components tests --select F,E9`——只拦未定义名/语法错误，不拦风格与未使用导入。
         spec: "`.github/workflows/tests.yml:21`。"
-        constraint: 范围不含 `tools/`；本地 `ruff check .` 虽已全绿，但脚本腐化不会让 CI 变红。
+        constraint: 范围不含 `tools/`。
         input: 源码
         process: ruff
         output: 通过/失败
@@ -1362,4 +1359,4 @@
       - id: '8412'
         type: function_constraint
         name: 门禁不覆盖 tools
-        description: lint 范围显式排除 `tools/`，导致探测脚本腐化无人发现（F401 ×2、F821 ×1、默认内网 IP ×4、与生产常量矛盾 ×1）。
+        description: lint 范围显式排除 `tools/`。

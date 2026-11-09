@@ -9,7 +9,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 
 ## 代码结构与模块划分
 
-本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 3055 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（20 个 .py 探测脚本 + 1 个 .sh + 2 个 .json 存档，`ls tools/*` 实测；受版本控制 24 个文件）与 `tests/`（4 文件 / 1020 行）属于证据与验证设施，不是运行时域。
+本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 3055 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（`diagnose_state.py`、`verify_full.py`、`enum_map.json`）与 `tests/`（4 文件 / 1018 行）属于验证设施，不是运行时域。
 
 ```text
 project-root/
@@ -32,7 +32,7 @@ project-root/
 │   ├── services.yaml / strings.json      # 服务与文案（strings.json 与 translations/en|zh-Hans 同构）
 │   └── translations/{en,zh-Hans}.json    # 222 行 ×2，键集合与 strings.json 完全一致
 ├── tests/                                # 证据设施：unittest + AST 契约测试（4 文件）
-├── tools/                                # 证据设施：probe_*/verify_* 探测脚本
+├── tools/                                # 验证设施：排障与真机验收脚本
 └── docs/                                 # 参考文档（非事实来源）
 ```
 

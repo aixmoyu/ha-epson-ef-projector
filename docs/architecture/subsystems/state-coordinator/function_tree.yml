@@ -219,7 +219,7 @@
         name: 声明零一开关表
         description: 6 行 4 元组（唯一后缀、翻译键、GET 命令、SET 命令），覆盖自动校正、墙面颜色自适应、人体感应、护眼、开机校正、静音。
         spec: "`WRITABLE_SWITCHES: list[tuple[str,str,str,str]]`，6 行（const.py:53-66）"
-        constraint: 表内 refresh 项已移除（const.py:50-52 注释说明 GET_REFRESH 其实是小时数）。
+        constraint: 表内不含 refresh 项（`const.py:50-52` 注释说明 GET_REFRESH 其实是小时数）。
         input: 无（静态声明）
         process: 被两处解包——实体创建 switch.py:38、轮询回读 coordinator.py:92
         output: 6 个 switch 实体 + settings 的 6 个键
@@ -345,7 +345,7 @@
         output: 另一侧表示或 None
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+# 全局功能树映射（见 architecture_views/function_tree.yml）
 #   本模块参与的全局 function 节点 id: 12, 31, 32, 44, 52, 71
 #   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
 #         两者通过上述 id 对齐, 模块边界不因合并而改变。

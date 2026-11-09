@@ -83,9 +83,9 @@ graph LR
 |2026-11-01|诊断表新增 `auto_focus_state`/`auto_focus_target`（带参 `"0"`/`"1"` 才不挂）|无参数 `GET_AUTO_FOCUS` 挂死 NanoHTTPD，带参秒回（`coordinator.py:78-81`）|`coordinator.py:78-81`、`api.py:634-656`|
 |2026-11-07|`FOCUS_STEP_UNIT` 的语义被纠正为「同向稳态步长 = 1」，闭环定位改由 `FOCUS_TRAVEL_UNITS_PER_SEC` 驱动|真机复测：换向首步 ±10、同向后续 ±1（`const.py:108-118`）|`const.py:119-133`、`api.py:516-584`、`number.py:282-301`|
 
-## 全局功能树映射（A3 合并回写）
+## 全局功能树映射
 
-> 依据：`architecture_views/function_tree.yml`（A3 业务去重合并产物，base_commit 52928ed9）。
+> 依据：`architecture_views/function_tree.yml`（跨模块业务能力合并产物）。
 > 本模块在全局功能树中参与的 `function` 节点如下；合并依据与不合并理由见该文件头部注释。
 
 | 全局 function id | 全局 function 名称 |

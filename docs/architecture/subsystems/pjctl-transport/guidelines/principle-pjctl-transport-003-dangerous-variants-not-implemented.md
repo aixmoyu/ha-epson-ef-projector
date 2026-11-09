@@ -42,7 +42,7 @@ principle_category: 治理
 
 - `custom_components/epson_ef/api.py` 全部命令方法。
 - `const.py` 中承载"取值域"与"参数模板"的常量（`AMBIENT_MODE_OPTIONS`、`TEST_PATTERN_ON/OFF`、`WRITABLE_*` 表）。
-- **不覆盖**：`request()` 公开透传路径（`services.py:64`）、`tests/` 与 `tools/` 中的探测脚本（它们**故意**要发危险命令来确认语义，如 `tools/probe_round5.py` 探测 `params="255"`）。
+- **不覆盖**：`request()` 公开透传路径（`services.py:64`）、`tests/` 中为确认语义而故意构造危险参数的用例。
 
 ## 规则
 

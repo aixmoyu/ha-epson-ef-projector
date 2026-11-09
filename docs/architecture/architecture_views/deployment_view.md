@@ -66,10 +66,10 @@ graph TD
 | `Ef50Coordinator` 定时任务 | 周期轮询电源态 + 每 12 轮刷慢速诊断 | 每 config entry 1 个 | 单轮最坏 ≈30+ 次串行 HTTP，每次默认 10s 超时；两次请求间 `asyncio.sleep(0.2)` 节流 | 由 `update_interval` 驱动（`poll_interval`，5–300s，默认 15s），无并发/无自适应退避（`custom_components/epson_ef/coordinator.py:28-33`、`:84-115`） |
 | aiohttp `ClientSession` | Digest 认证 + JSON POST 传输 | 每 entry 1 个（懒创建） | 复用连接池；session 由 `_owns_session` 判定归属 | 不扩缩；entry 卸载时 `api.close()`（`custom_components/epson_ef/api.py:87-97`、`custom_components/epson_ef/__init__.py:213-221`） |
 | 实体平台（7 个 platform） | 暴露 58 个实体 | 每 entry 58（固定，不动态增减） | 状态存于 coordinator 缓存，非独立进程 | 无（`custom_components/epson_ef/__init__.py:24-27`） |
-| 投影仪 `WebApiSrv` | 解析 pjctl、转 Binder 调用 | 1 / 1（NanoHTTPD **单线程**） | 固件内线程，无排队深度控制；一次卡死即全端口不可用 | 无。仅能靠设备重启/ADB 重启服务恢复（`docs/reference/protocol.md:5-6`、`tools/README.md` 的注意事项节） |
-| Android `EpsonService` / MCU | 实际执行写入（灯、马达、几何） | 1 / 1 | 固件私有不透明；`control_mcu_transmitCommand` 内部超时 250–1500ms | 无（`docs/reference/coverage-matrix.md:464-469`） |
+| 投影仪 `WebApiSrv` | 解析 pjctl、转 Binder 调用 | 1 / 1（NanoHTTPD **单线程**） | 固件内线程，无排队深度控制；一次卡死即全端口不可用 | 无。仅能靠设备重启/ADB 重启服务恢复（`docs/architecture/architecture_views/process_view.md` §2） |
+| Android `EpsonService` / MCU | 实际执行写入（灯、马达、几何） | 1 / 1 | 固件私有不透明；`control_mcu_transmitCommand` 内部超时 250–1500ms | 无（固件内部实现，无源码可查） |
 
-实体数口径：media_player 1 + sensor 2 + binary_sensor 1 + button 30 + switch 11（6 可写 + 3 氛围灯 + 测试图案 + 自动对比度）+ select 6（1 启动模式 + 4 可写 + 1 氛围灯模式）+ number 7（亮度/刷新/对焦/氛围亮度 + RGB×3）= 58，与真机验收记录的实体总数一致（`custom_components/epson_ef/button.py:17-84`、`custom_components/epson_ef/switch.py:34-53`、`custom_components/epson_ef/select.py:33-46`、`custom_components/epson_ef/number.py:53-63`、`docs/reports/v3.10.0-release-test.md:10`、`:26`）。
+实体数口径：media_player 1 + sensor 2 + binary_sensor 1 + button 30 + switch 11（6 可写 + 3 氛围灯 + 测试图案 + 自动对比度）+ select 6（1 启动模式 + 4 可写 + 1 氛围灯模式）+ number 7（亮度/刷新/对焦/氛围亮度 + RGB×3）= 58，与真机验收记录的实体总数一致（`button.py:17-84`、`switch.py:34-53`、`select.py:33-46`、`number.py:53-63`）。
 
 ### 2.2 部署制品与关键资源位置
 
@@ -81,12 +81,12 @@ graph TD
 | 前端资源 | `custom_components/epson_ef/icon.png`、`logo*.png` | 仅 HACS/UI 展示 |
 | 翻译 | `custom_components/epson_ef/strings.json`、`translations/{en,zh-Hans}.json` | 配置流与实体名称 |
 | 服务定义 | `custom_components/epson_ef/services.yaml:1-31` | `send_key`、`raw_request` 字段描述 |
-| **凭据（明文）** | `custom_components/epson_ef/const.py:15-19` | `DIGEST_USER`/`DIGEST_PASSWORD` 为源码常量，**不在任何密管系统**；同一份也抄录在 `docs/reference/protocol.md:20-22` |
+| **凭据（明文）** | `custom_components/epson_ef/const.py:15-19` | `DIGEST_USER`/`DIGEST_PASSWORD` 为源码常量，**不在任何密管系统** |
 | 设备身份持久化 | HA `.storage/epson_ef.<entry_id>.identity`（运行时生成，不入库） | `Store(hass, 1, f"{DOMAIN}.{entry.entry_id}.identity")`，存 `serial` 或 `identity`（`custom_components/epson_ef/__init__.py:53-55`） |
 | 配置条目 | HA `.storage/core.config_entries`（运行时生成） | `host`/`port`/`name`/`poll_interval`；**不含** Digest 凭据（`custom_components/epson_ef/__init__.py:168-187`） |
-| CI 流水线 | `.github/workflows/tests.yml:1-24` | 仅 lint(`ruff F,E9`) + `unittest`；**无** hassfest/HACS 校验、无 HA 版本矩阵、无真机 job |
-| 运维脚本 | `tools/*.py`、`tools/standby_watch.sh` | 不随 HACS 安装分发，只在仓库内；含维护者内网 IP 默认值（`tools/probe_focus.py:28`、`tools/verify_round4.py:23`） |
-| 网络策略 | 仓库内**不存在**（无 NetworkPolicy/防火墙即代码） | 仅有文字建议：不要暴露 8080 到公网、做 DHCP 静态绑定（原 `SECURITY.md` 已于 2026-11-09 移除；同义内容见 `README.md` 安全节与已知限制节） |
+| CI 工作流 | `.github/workflows/{tests,hassfest,hacs}.yml` | lint(`ruff F,E9`) + `unittest` + hassfest 清单校验 + HACS 仓库结构校验；无 HA 版本矩阵、无真机 job |
+| 运维脚本 | `tools/diagnose_state.py`、`tools/verify_full.py`、`tools/enum_map.json` | 不随 HACS 安装分发，只在仓库内；设备地址从命令行参数或 `EPSON_HOST` 读取，无默认值 |
+| 网络策略 | 仓库内**不存在**（无 NetworkPolicy/防火墙即代码） | 仅有文字建议：不要暴露 8080 到公网、做 DHCP 静态绑定（见 `README.md` 安全节与已知限制节） |
 | 日志/运行产物 | HA 侧日志；仓库 `logs/` 已被忽略 | `.gitignore:14-16` 忽略 `logs/` 与 `*.log` |
 
 ### 2.3 配置条目版本迁移（v1 ADB → v2 native）
@@ -98,7 +98,7 @@ graph TD
 | v1→v2 动作 | 强制写入 `port=8080`（忽略 v1 的任何端口），删除 `enable_camera` 键，`async_update_entry(version=2)` | `custom_components/epson_ef/__init__.py:33-37` |
 | 迁移幂等性 | 只在 `entry.version == 1` 时执行，返回 `True`；重复调用不重复改写 | `custom_components/epson_ef/__init__.py:33-39` |
 | 迁移不做的事 | 不迁移 ADB 时代遗留的实体 unique_id（由 identity 迁移另行处理）、不校验新端口可达性 | `__init__.py:31-39` 对比 `:42-120` |
-| 回滚 | 无向下迁移；v1 语义（ADB:5555）在新版本代码中已无任何调用路径 | 全仓库无 ADB 调用（仅 `tools/probe_remaining.py` 属运维脚本） |
+| 回滚 | 无向下迁移；v1 语义（ADB:5555）在新版本代码中已无任何调用路径 | 生产代码无任何 ADB 调用 |
 
 ## 3. 隔离边界与访问控制
 
@@ -133,7 +133,7 @@ graph LR
 | HA 自动化/语音 | 实体（turn_on/off、select、number） | 实体服务 | HA 实体权限 | 与上同属"调用即执行"，无二次确认 |
 | HA 集成 | 投影仪 | TCP 8080 `/api/pjctl` | HTTP 明文 + Digest MD5(qop=auth) | 唯一鉴权是**固件内置、全平台共用、不可轮换**的常量凭据（`custom_components/epson_ef/api.py:119-145`、`const.py:15-19`） |
 | 同网段任意主机 | 投影仪 | TCP 8080 | 同上 | 凭据在公开仓库中，等价于**无鉴权可达**；无 IP 白名单、无 TLS（`api.py:79`） |
-| 同网段任意主机 | 投影仪 | TCP 5555 (ADB) | ADB RSA 授权 | 排障工具用它解卡/重启 WebApiSrv；若长期开启则是更高危通道（`tools/probe_remaining.py`、`tools/README.md:50-51`） |
+| 同网段任意主机 | 投影仪 | TCP 5555 (ADB) | ADB RSA 授权 | 若设备开启了网络调试，该通道可执行任意命令，风险高于 8080；建议用后关闭 |
 | 投影仪 | HA | 无 | 无推送/回调 | 只能由 HA 主动轮询；设备不反向连接（`manifest.json:10` `local_polling`） |
 | HA 事件总线监听者 | `epson_ef_response` 事件 | HA 事件 | 订阅即得 | `raw_request` 把命令结果（含设备返回值）广播到事件总线，无权限过滤（`custom_components/epson_ef/services.py:67-70`） |
 
@@ -167,12 +167,12 @@ graph LR
 | 环境 | 用途 | 运行平台 | 存储 | 外部依赖 | 访问控制 |
 |-|-|-|-|-|-|
 | dev（本仓库开发机） | 改代码、跑静态检查与单测 | macOS/开发者主机；**不需要 HA**（测试用 stub 包 + `FakeResponse` 假 aiohttp） | 无（进程内） | Python 3.13、`aiohttp`、`ruff`、`pyflakes` | 开发者本机账号；`tests/test_api.py:15-40` 显式屏蔽 HA 导入 |
-| dev（真机联调） | 验证命令与写通路 | 开发者主机 + **真实投影仪**（EF-50/HB71，`192.168.61.7:8080`）+ 可选 ADB:5555 | `tools/probe_results.json` 等文件存档 | 同网段可达投影仪 | `EPSON_HOST` 环境变量或首参传入；工具无内建鉴权（`tools/README.md:6-15`） |
+| dev（真机联调） | 验证命令与写通路 | 开发者主机 + **真实投影仪**（EF-50/HB71，`192.168.61.7:8080`）+ 可选 ADB:5555 | 无（终端输出由人工判读） | 同网段可达投影仪 | `EPSON_HOST` 环境变量或首参传入；工具无内建鉴权（`tools/README.md`） |
 | CI（GitHub Actions） | 每次 push/PR 的 lint + 单测 | `ubuntu-latest` / Python 3.13 | 无 | `pip install aiohttp ruff pyflakes` | 仓库权限；**不接触任何真实设备**（`.github/workflows/tests.yml:9-24`） |
 | 验收/prod（用户真机） | 实际使用 | NanoPi-R76S / HA 2026.9.3 / Docker / Python 3.14；部署方式＝整目录替换 + 重启 HA | HA `.storage`（config entry + identity）+ HA 历史库（不属于本集成） | 局域网内的投影仪；HA 自带 aiohttp | HA 用户体系；投影仪侧仅固件 Digest（凭据公开） |
 | staging | — | **不存在** | — | — | — |
 
-补充事实：`hacs.json:3` 声明最低 HA `2024.4.0`，而真机验收用的是 HA `2026.9.3`（`docs/reports/v3.10.0-release-test.md:6-8`、`docs/reference/coverage-matrix.md:521`）。仓库**没有**任何固件仿真器或协议 mock 服务端；唯一"仿真"是单测里的 `FakeResponse`/`AsyncMock`（`tests/test_api.py:41-60`），因此"未在真机验证过的行为"在 CI 中不可见。
+补充事实：`hacs.json:3` 声明最低 HA `2024.4.0`，而真机运行环境为较新的 HA 版本。仓库**没有**任何固件仿真器或协议 mock 服务端；唯一"仿真"是单测里的 `FakeResponse`/`AsyncMock`（`tests/test_api.py:41-60`），因此"未在真机验证过的行为"在 CI 中不可见。
 
 ## 6. 容灾与高可用设计
 
@@ -201,21 +201,21 @@ graph LR
 - 已知风险在代码注释中被明确记录：`get_raw` 的 docstring 直接写"some [commands] hang the HTTP thread when the projector cannot answer — callers must apply a timeout"（`api.py:340-346`）；`GET_AUTO_FOCUS` 注释写"无参数查询会挂,带参不挂"（`coordinator.py:78-81`、`api.py:634-641`）。
 - 现有防护只有**客户端侧超时**：默认 10s（`api.py:160`、`:186-189`），`CONFIG_GET_LIGHT_TIME` 用 5s（`api.py:255-257`）；`goto_focus` 用 `finally` 保证发 `OFF`（`api.py:573-582`）防止马达失控——这是唯一"主动收尾"式防护。
 - **没有**：熔断器、连续失败计数、指数退避、健康探测 endpoint、跨轮降级、以及对"服务端已卡死"的识别（超时与"设备太慢"不可区分）。
-- 仓库自己的运维脚本承认必须靠 ADB 解卡：`tools/probe_remaining.py`（`am force-stop` + `am start-service`，并说明必须用 `start-service` 否则被 Android 杀），`tools/README.md:19-20`（"可能把 WebApiSrv 卡死…通常重启投影仪恢复"）。**这些解卡能力完全没有进入集成代码**，因此生产环境下 HA 无法自救。
+- 集成代码**没有任何**针对该场景的自愈逻辑：既无熔断也无重试退避，只能靠用户重启投影仪恢复。`tools/diagnose_state.py` 可帮助定位是哪条命令触发了挂起。
 
 ---
 
-## 7. 部署与运维风险候选（供主 agent 汇总至 risk.md）
+## 7. 部署与运维风险候选（）
 
-> 本节不属于模板标准节，仅作为"探索副产物"列出，便于主 agent 去重合并。
+> 本节不属于模板标准节，仅作为"探索副产物"列出，便于维护者 去重合并。
 
 | 候选 ID | 分类 | 风险 | 证据 | 建议缓解 |
 |-|-|-|-|-|
-| DEP-R1 | 安全 | 固件 Digest 凭据以明文常量入库，且无 TLS，任何拿到仓库的人可在同网段控制设备 | `const.py:15-19`、`api.py:79`、`docs/reference/protocol.md:20-22`（原 `SECURITY.md` 凭据说明已于 2026-11-09 移除） | 已属"固件固定、不可轮换"的既成事实，只能靠网络隔离（VLAN/防火墙）+ 文档明示；不要把 8080 映射到公网 |
+| DEP-R1 | 安全 | 固件 Digest 凭据以明文常量入库，且无 TLS，任何拿到仓库的人可在同网段控制设备 | `const.py:15-19`、`api.py:79` | 已属"固件固定、不可轮换"的既成事实，只能靠网络隔离（VLAN/防火墙）+ 文档明示；不要把 8080 映射到公网 |
 | DEP-R2 | 安全 | `raw_request` 服务无命令白名单、无 `require_admin`，任何 HA 用户/自动化可发任意 `CONFIG_SET_*`（含"立即刷新并关机"） | `services.py:56-94`、`api.py:481-488`、`README.md:111` | 加 `@require_admin`；对 `CONFIG_SET_REFRESH "1"` 等高危命令做参数级拒绝 |
-| DEP-R3 | 可用性 | 投影仪 NanoHTTPD 单线程挂起后**无自愈**，超时只是客户端放弃，服务端仍卡死 | `api.py:340-346`、`coordinator.py:63-101`（无熔断/退避）、`tools/probe_remaining.py` | 连续 N 次超时后进入熔断降级（只保留低频存活探测），并在文档/UI 明示"需重启设备"；避免无参数引擎查询（已部分做到） |
+| DEP-R3 | 可用性 | 投影仪 NanoHTTPD 单线程挂起后**无自愈**，超时只是客户端放弃，服务端仍卡死 | `api.py:340-346`、`coordinator.py:63-101`（无熔断/退避） | 连续 N 次超时后进入熔断降级（只保留低频存活探测），并在文档/UI 明示"需重启设备"；避免无参数引擎查询（已部分做到） |
 | DEP-R4 | 稳定性 | 唤醒时单轮慢速诊断 35 次串行请求、无整车超时预算，10s×N 的最坏情况可远超 poll_interval，导致轮询积压/状态陈旧 | `coordinator.py:43-133`、`api.py:160` | 给整轮更新加 `asyncio.timeout` 总预算；失败即跳过本轮并退避 |
-| DEP-R5 | 可用性 | 深度待机 + DHCP 续租失败会让设备**自愿断网**，HA 无法远程唤醒（硬件限制），表现为长期 unavailable | `docs/reference/coverage-matrix.md:480-517`、`README.md:152-156` | 运维前置条件：DHCP 静态绑定 + 延长租约；文档已写但无代码可校验 |
-| DEP-R6 | 运维 | 无 staging、CI 不跑 hassfest/HACS 校验、无真机 job；多个发布阻断缺陷只在真机验收暴露 | `.github/workflows/tests.yml:9-24`、`docs/reports/v3.10.0-release-test.md:1-20` | 接入 `hassfest`/`hacs/action`，并把"开机态诊断轮询"纳入最小冒烟测试（当前 BLOCKER 正是待机时不执行该分支） |
+| DEP-R5 | 可用性 | 深度待机 + DHCP 续租失败会让设备**自愿断网**，HA 无法远程唤醒（硬件限制），表现为长期 unavailable | `README.md` 已知限制节 | 运维前置条件：DHCP 静态绑定 + 延长租约；文档已写但无代码可校验 |
+| DEP-R6 | 运维 | 无 staging、CI 不跑 hassfest/HACS 校验、无真机 job；多个发布阻断缺陷只在真机验收暴露 | `.github/workflows/tests.yml:9-24` | 接入 `hassfest`/`hacs/action`，并把"开机态诊断轮询"纳入最小冒烟测试（当前 BLOCKER 正是待机时不执行该分支） |
 | DEP-R7 | 技术债 | `_TIMEOUT` 常量定义但从未使用，超时时长散落在字面量 10.0/5.0 中；`switch.py`/`select.py`/`services.py` 用 `except Exception` 掩盖编程错误 | `api.py:37`（仅定义）、`api.py:160`、`api.py:256`、`switch.py:107`、`select.py:108`、`services.py:65` | 统一超时配置项；捕获范围收窄到 `EpsonApiError` 家族 |
 | DEP-R8 | 技术债/身份 | config entry unique_id 用 `host:port`，与实体序列号身份不同源；改 IP 后"重新添加"会造出重复 entry 并使实体唯一 ID 冲突 | `config_flow.py:47-49` 对比 `__init__.py:58-76` | 创建时也用序列号做 unique_id，或对同一序列号做去重提示 |

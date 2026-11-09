@@ -85,9 +85,9 @@ graph LR
 |2026-11-01|`light_output` 从诊断 sensor 迁为 number（50–100 步进 5）|写通路因 `size=token 数` 修复而打通，只读实体升级为可写|`__init__.py:135`、`number.py:66-140`|
 |2026-11-07|对焦写入从"按 ±10 步数换算"改为 `goto_focus` 闭环（MAX/MIN + 定时 + OFF + 回读）|实测换向首步 ±10、同向后续仅 ±1，旧算法到不了远距离目标|`number.py:282-301`、`api.py:544-584`、`const.py:105-133`|
 
-## 全局功能树映射（A3 合并回写）
+## 全局功能树映射
 
-> 依据：`architecture_views/function_tree.yml`（A3 业务去重合并产物，base_commit 52928ed9）。
+> 依据：`architecture_views/function_tree.yml`（跨模块业务能力合并产物）。
 > 本模块在全局功能树中参与的 `function` 节点如下；合并依据与不合并理由见该文件头部注释。
 
 | 全局 function id | 全局 function 名称 |

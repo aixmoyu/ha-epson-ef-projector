@@ -19,12 +19,12 @@ principle_scope: global
 
 实测其 import 面只有 stdlib（`asyncio/hashlib/logging/random/re/typing`，`custom_components/epson_ef/api.py:7-12`）＋ `aiohttp`（`:14`）＋包内 `const`（`:16`）。所有 HA 概念（`ConfigEntry`、`DataUpdateCoordinator`、`HomeAssistantError`）都被关在 `coordinator.py` 与各平台文件里。
 
-配套后果是三层收益同时成立：单测不需 HA（`tests/test_api.py` 全程不 import homeassistant，实测 64 用例通过）；`tools/` 的 20 个探测脚本用 `importlib` 直载 `api.py` 做真机验证；协议修复可以在秒级回归而不必起 HA。
+配套后果是三层收益同时成立：单测不需 HA（`tests/test_api.py` 全程不 import homeassistant，实测 64 用例通过）；`tools/` 的脚本用 `importlib` 直载 `api.py` 做真机验证；协议修复可以在秒级回归而不必起 HA。
 
 ## 为什么要这样
 
 1. **CI 不装 HA**（`.github/workflows/tests.yml:18` 只 `pip install aiohttp ruff pyflakes`）。如果 `api.py` import 了 HA，整个协议层就变成 CI 不可测——而协议层恰恰是 bug 最密集的地方（`size` 语义、Digest、电源态判定）。
-2. **真机验证成本极高**。现场分析脚本必须复用生产代码的命令构造逻辑，否则会出现"脚本能写、集成不能写"的分叉（历史上 `tools/verify_round4.py:24` 就因自复刻旧假设与实际实现矛盾）。
+2. **真机验证成本极高**。现场分析脚本必须复用生产代码的命令构造逻辑，否则会出现"脚本能写、集成不能写"的分叉（否则容易出现"脚本能写、集成不能写"的分叉）。
 3. **错误语义需要独立于框架**。4 类异常（`EpsonApiError` / `EpsonApiUnavailable` / `EpsonApiCommandFailed` / `EpsonApiTimeout`，`api.py:40-61`）是协议层对"设备状态"的判断，由协调器再翻译成 HA 语义；反向依赖会让这套分类被框架细节污染。
 
 ## 适用范围

@@ -104,9 +104,9 @@ graph LR
 |2026-11-07（真机测试）|修复遗留实体清理静默失效：弃用 `registry.async_get_entity_id(platform, DOMAIN, uid)` 反序调用，改为遍历条目 + 集合判定；弃用 `dr.async_get_device(identifiers=...)`|3.5.6→3.10.0 升级后 `setting-refresh`/`button-engine_refresh` 永久 unavailable（事故记录 `tests/test_regressions.py:1-11`、`:141-148`）|`__init__.py:157-162`、`:105-109`、`tests/test_regressions.py:96-171`|
 |2026-11-07|身份从「始终 host:port」改为「serial 优先 + Store 持久化」，setup 内新增 `_async_get_base_id` 与 `_async_migrate_identity` 调用|DHCP 漂移导致实体历史与自动化引用断档；README 承诺「序列号作为稳定身份」|`__init__.py:42-120`、`:178-181`、`README.md:87`、`:156`|
 
-## 全局功能树映射（A3 合并回写）
+## 全局功能树映射
 
-> 依据：`architecture_views/function_tree.yml`（A3 业务去重合并产物，base_commit 52928ed9）。
+> 依据：`architecture_views/function_tree.yml`（跨模块业务能力合并产物）。
 > 本模块在全局功能树中参与的 `function` 节点如下；合并依据与不合并理由见该文件头部注释。
 
 | 全局 function id | 全局 function 名称 |

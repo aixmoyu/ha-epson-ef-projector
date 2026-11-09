@@ -30,7 +30,6 @@ principle_scope: module
 | 观测 | 命令 | 结果 |
 |-|-|-|
 | CI lint 同款 | `ruff check custom_components tests --select F,E9` | `All checks passed!`，rc=0 |
-| 全量默认规则 | `ruff check .` | `Found 3 errors.`，**rc=1**：`tools/diagnose_state.py:5:8` F401、`tools/probe_phase23.py:5:8` F401、`tools/probe_retest_drops.py:79:15` F821 `wait_online` 未定义 |
 | HA 可用性 | `python3 -c "import homeassistant"` | `ModuleNotFoundError`，rc=1 |
 | 伪包副作用 | discover 后过滤 `sys.modules` | 仅 `['epson_ef','epson_ef.api','epson_ef.const']`——14 个生产模块只执行了 2 个 |
 
@@ -40,7 +39,7 @@ principle_scope: module
 
 - **门禁的野心与它的可信度成反比**。若 CI 声称"全量检查"却只查两个目录，团队会停止手工检查 `tools/`，缺陷照旧存在但心理上已被"覆盖"。反之，明确声明"只查 X 与 Y"，则 3 个已知错误就是待办清单而非意外。
 - **`--select F,E9` 是刻意的极窄规则集**：F = pyflakes（未定义名/未使用导入/重定义），E9 = 语法错误。它不拦风格、不拦复杂度、不拦未使用导入之外的一切。这与 `.github/workflows/tests.yml` 只有 4 个 step 的极简结构一致——门禁只要"能拦住会让集成在真机上炸的语法级错误"。
-- **不装 homeassistant 是最大的范围声明**，也是最大的缺口：12/14 个生产模块 import HA，装配、平台注册、迁移逻辑全部零覆盖。历史已因此发生过一次全实体 unavailable（BLOCKER-1，`docs/reports/v3.10.0-release-test.md:16-22`）。写清这条，才能解释为什么 `docs/reports/v3.10.0-release-test.md` 的唯一验证方式是"整目录替换 + 重启 HA"。
+- **不装 homeassistant 是最大的范围声明**，也是最大的缺口：12/14 个生产模块 import HA，装配、平台注册、迁移逻辑全部零覆盖。历史已因此发生过一次全实体 unavailable（历史事故，见 `tests/test_const_contract.py:1-9`）。写清这条，才能解释为什么唯一的自动化验证方式是"整目录替换 + 重启 HA"。
 - **无版本锁是范围声明的一部分**：`pip install ruff pyflakes` 浮动，`python-version: "3.13"` 固定，`aiohttp` 不锁。因此"CI 绿"绑定的是"某天的 ruff 默认行为"，不是某个确定工具链。
 
 ## 适用范围
@@ -59,7 +58,7 @@ principle_scope: module
 
 ## 反模式 / 禁止项
 
-- ❌ 在 README/文档里写 `pytest tests/` 而 CI 与依赖清单都不含 pytest（`docs/reports/v3.10.0-release-test.md:32` 已这么写；无 requirements，CI 只装 3 个包）。
+- ❌ 在 README/文档里写 `pytest tests/` 而 CI 与依赖清单都不含 pytest（无 requirements 声明，CI 只装 3 个包）。
 - ❌ 用 `ruff check .` 作为本地"和 CI 一样"的证明——实测 rc=1，与 CI 结论相反。
 - ❌ 扩大 lint 范围却不修既存错误，然后加 `# noqa` 掩盖。
 - ❌ 把 `test_static.py` 的 `skipTest` 当作"通过"。

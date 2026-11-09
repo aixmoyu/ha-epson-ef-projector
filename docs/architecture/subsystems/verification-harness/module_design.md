@@ -22,7 +22,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
   - 外层 = 真机层（`tools/`），唯一接触固件，结论不可重复；
   - 中层 = 离线层（`tests/`），不接触设备、秒级可重复，锁住"已经学到的事实"；
   - 内层 = 门禁层（CI），只跑中层的一个子集，保证事实不倒退。
-  这个方向不可颠倒：**真机先发现事实 → 离线测试把事实固化 → CI 阻止事实被改回去**。仓库的 commit 历史与文件时间戳与该顺序一致（`tools/probe_round6b.py` 11-01 09:05 晚于 `tools/probe_round6.py` 08:46，`tests/test_api.py` 的 Round6Tests 与之对应）。
+  这个方向不可颠倒：**真机先发现事实 → 离线测试把事实固化 → CI 阻止事实被改回去**。仓库的 commit 历史与文件时间戳与该顺序一致（脚本早于 `tests/test_api.py` 中对应的断言）。
 
 - **核心组件与分工**：
 
@@ -34,19 +34,16 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | AST 契约检查器 | 表宽度 ↔ 解包宽度双向比对 | `ast`（不 import 被测模块） | `tests/test_const_contract.py:35-142` |
 | AST 装配断言组 | 校验 `legacy` 清理表、`async_get_entity_id` 实参顺序 | `ast` + `ast.literal_eval` | `tests/test_regressions.py:96-180` |
 | pyflakes 子进程检查 | 只挑 `undefined name`/`redefinition` | `pyflakes`（可缺失） | `tests/test_static.py:13-38` |
-| 探测脚本族 `probe_*`（12 个） | 命令能力发现、参数矩阵、健康判别、解卡 | `importlib` + aiohttp + （部分）adb | `tools/probe_commands.py`、`probe_matrix.py`、`probe_remaining.py` 等 |
-| 验收脚本族 `verify_*`（3 个） | 功能回环验收（会开关机） | 同上 | `tools/verify_features.py`、`verify_full.py`、`verify_round4.py` |
-| 长时监视 `standby_watch.sh` | ping/8080/5555 三路采样 + WOL 试探 | bash + nc/ping/xxd | `tools/standby_watch.sh` |
-| 结论存档 | 命令矩阵 + 枚举映射 | 纯 JSON | `tools/probe_results.json`、`tools/enum_map.json` |
+| 排障脚本 `diagnose_state.py` | 定位让设备 HTTP 服务挂起的命令 | `importlib` + aiohttp | `tools/diagnose_state.py` |
+| 验收脚本 `verify_full.py` | 功能回环验收（会开关机） | 同上 | `tools/verify_full.py` |
+| 枚举清单 `enum_map.json` | 固件命令枚举名 → 内部数值 | 纯 JSON | `tools/enum_map.json` |
 | CI 门禁 | 2 条命令 + 3 个 pip 包 | GitHub Actions | `.github/workflows/tests.yml:1-24` |
 
 ```mermaid
 graph TD
     subgraph L1["真机层 tools/（需设备，不可重复）"]
-        P1["probe_*（12）<br/>能力发现 + 解卡"]
-        P2["verify_*（3）<br/>功能回环验收"]
-        P3["standby_watch.sh<br/>长时失联监视"]
-        A1[("probe_results.json<br/>36 条矩阵")]
+        P1["diagnose_state.py<br/>连接排障"]
+        P2["verify_full.py<br/>功能回环验收"]
         A2[("enum_map.json<br/>71+27 枚举")]
     end
     subgraph L2["离线层 tests/（无设备，0.2s 可重复）"]
@@ -94,20 +91,19 @@ graph TD
 | `AMBIENT_LIGHT_SWITCHES` | 3 行 × 4 元组 | `const.py:138-142` | 宽度 4；解包点 `switch.py:45` |
 | `BUTTON_DEFS` | 30 行 × 5 元组 | `button.py:17-83` | 宽度 5；解包点 `button.py:96` |
 | `STANDBY_MODE_OPTIONS` | dict 2 项 | `const.py:27-31` | 行为断言 `tests/test_api.py:282-296`（不在 AST 契约内） |
-| `probe_results` | `{name: {param_key: verdict, "_done": bool}}` | `tools/probe_results.json` | 36 条目，全部 `_done=true` |
 | `enum_map` | `{SMFConfigID: 71, SMFNotifyID: 27, ConfigResultCode: 0}` | `tools/enum_map.json` | 与生产代码 46 CONFIG + 20 NOTIFY 全命中 |
 
-- **状态转换逻辑（验证流水线的状态机）**：
+- **状态转换逻辑**：
 
 ```mermaid
 stateDiagram-v2
-    [*] --> 真机未知: 固件行为未知
-    真机未知 --> 脚本探测: 写 probe_*.py（破坏性升序）
-    脚本探测 --> 结论存档: 写入 probe_results.json
-    脚本探测 --> 待解卡: 命令打挂 NanoHTTPD
-    待解卡 --> 脚本探测: ADB am start-service 解卡
-    结论存档 --> 代码固化: 改写 api.py / const.py
+    [*] --> 行为未知: 固件行为待确认
+    行为未知 --> 真机验证: 用脚本对设备实测
+    真机验证 --> 待确认结论: 观察到稳定行为
+    待确认结论 --> 代码固化: 写进 api.py / const.py 并在注释记录依据
     代码固化 --> 离线断言: 在 tests/ 加用例
+    真机验证 --> 服务无响应: 命令触发挂起
+    服务无响应 --> 行为未知: 重启设备后重试
     离线断言 --> CI绿: push / PR
     CI绿 --> [*]: 事实已锁定
     离线断言 --> 红灯: 断言失败
@@ -132,7 +128,7 @@ erDiagram
 
 ### 状态机
 
-（见上"验证流水线的状态机"——本模块唯一的真状态机是"事实从设备迁移到 CI 的流转过程"。）
+（见上状态机——本模块唯一的真状态机是"结论从设备迁移到 CI 的流转过程"。）
 
 ## 关键工作流与算法实现
 
@@ -186,9 +182,9 @@ spec.loader.exec_module(mod)
 | Test Double（手写 Fake，非 Mock 框架） | `FakeResponse` / `FakeSession` | 不引入 `aioresponses` 等第三方，只依赖 `aiohttp` 已必须安装 | `tests/test_api.py:40-77` | `FakeSession.post` 同时充当"记录器"与"队列"，断言直接读 `session.calls` |
 | 结构化静态契约（AST-as-assertion） | `test_const_contract.py`、`test_regressions.py` | 被测模块 import 即拉入 HA，无法用常规断言 | `tests/test_const_contract.py:35-88` | 把"运行时才会炸的错误"提前为"解析文本即可判定" |
 | 伪包注入（Import Shim） | 3 处测试 + 20 处工具 | 绕过包 `__init__.py` 的副作用 | `tests/test_api.py:23-26`、`tools/diagnose_state.py:11-18` | 比 `sys.path` 技巧更精确：只屏蔽包入口，不屏蔽模块本体 |
-| Probe→Pin（探测即固化） | `tools/probe_round*.py` → `api.py` → `tests/test_api.py` | 真机结论易失，需在下一轮现场分析覆盖前固化 | `tests/test_api.py:299-504`（Round4/5/6 用例与 tool 同名对应） | 每个 `probe_roundN` 都有对应的 `RoundNTests` |
+| 探测即固化 | 真机脚本 → `api.py`/`const.py` 注释 → `tests/test_api.py` | 真机结论易失，需在下次改动前固化 | `tests/test_api.py:299-504` | 每条实测结论都有对应用例 |
 | Golden Payload（整包字典断言） | `tests/test_api.py` 的 20 个方法 / **32 处** `session.calls[n]["json"]` 断言（实测统计） | 只断单字段会漏掉"多写/少写字段" | `tests/test_api.py:224`、`:232`、`:243` | 代价是加字段要改多处 |
-| Regression Fixture from Incident | `tests/test_regressions.py` 的 5 个类 | 真机事故不复现 | 各用例 docstring | 每个类对应 `docs/reports/v3.10.0-release-test.md` 的一条缺陷 |
+| Regression Fixture from Incident | `tests/test_regressions.py` 的 5 个类 | 真机事故不复现 | 各用例 docstring | 每个类对应一次真机缺陷 |
 
 ## 数据设计
 
@@ -226,23 +222,20 @@ erDiagram
 
 | 存储 | 载体 | 写入方 | 读取方 | 一致性 |
 |-|-|-|-|-|
-| 命令探测矩阵 | `tools/probe_results.json`（每命令一条，`json.dump(indent=1)`） | `probe_commands.py`（`call_record` → `save_results`）、`probe_matrix.py`、`probe_phase23.py`、`probe_remaining.py`、`probe_retest_drops.py` | 同名脚本的"跳过已完成"逻辑（如 `probe_commands.py`） | **无锁**：多脚本并发跑会互相覆盖；无 schema 版本 |
-| 枚举映射 | `tools/enum_map.json`（只写一次，手工维护） | 固件静态提取（一次性） | `docs/reference/protocol.md:63`、`docs/reference/coverage-matrix.md:191` | 只读存档 |
-| 长时监视日志 | `/tmp/standby_watch.log` | `standby_watch.sh` | 人 | 追加写 |
-| 截图 | `/tmp/shot_*.png` | `probe_notify_sweep.py`、`:86-88` | 人 | 覆盖写 |
+| 枚举映射 | `tools/enum_map.json`（只写一次，手工维护） | 固件静态提取（一次性） | `tools/enum_map.json` | 只读存档 |
 
 > 不适用：无数据库、无缓存层、无迁移脚本。本模块不引入任何持久化依赖。
 
 ### 2.3 缓存策略
 
-不适用（唯一近似缓存的是 `probe_results.json` 的 `_done` 跳过语义，属"断点续跑"而非缓存）。
+不适用（验证脚本不缓存中间结果）。
 
 ### 数据流图
 
 ```mermaid
 flowchart LR
-    DEV["开发者"] -->|"写 probe_roundN.py"| HW["投影仪 :8080"]
-    HW -->|"OK/FAIL/DROP/HANG"| A1[("probe_results.json")]
+    DEV["开发者"] -->|"运行验证脚本"| HW["投影仪 :8080"]
+    HW -->|"成功/失败/超时"| A1[("终端输出 + 人工判读")]
     HW -->|"真实载荷接受/拒绝"| DEV
     DEV -->|"把结论写进 api.py/const.py"| PROD["生产代码"]
     DEV -->|"把结论写成用例"| T["tests/*.py"]
@@ -276,9 +269,9 @@ flowchart LR
 
 | 名称 | 描述 | 类型 | 默认值 | 取值范围 |
 |-|-|-|-|-|
-| `EPSON_HOST` | 工具脚本的设备地址 | 环境变量 | **脚本内四类不一致（20 个脚本实测分类）**：① 12 个 `argv[1]`→`EPSON_HOST`→空则 `sys.exit` 用法提示（无默认值，符合 README 承诺）；② 3 个 `EPSON_HOST` 有默认 `192.168.61.7`（`probe_focus.py:28`、`probe_power_state.py:20`、`probe_refresh.py:28`）；③ 4 个 round 脚本 `else ""`，**既不读 env 也不校验**（`probe_round3.py`、`probe_round5.py`、`probe_round6.py`、`probe_round6b.py`）；④ 1 个 `verify_round4.py:23` 硬编码 `HOST = "192.168.61.7"`，连 `sys.argv` 都不读 | 任意可达主机 |
+| `EPSON_HOST` | 工具脚本的设备地址 | 环境变量 | 两个脚本均从 `argv[1]` 或 `EPSON_HOST` 读取；缺失时打印用法并以非零码退出，无默认值 | 任意可达主机 |
 | `argv[1]` | 同上，优先级最高 | 位置参数 | — | 同上 |
-| `argv[2]` | 端口 | 位置参数 | 8080（`probe_commands.py`、`probe_matrix.py`） | 整数 |
+| `argv[2]` | 端口 | 位置参数 | 默认 8080 | 整数 |
 | `argv[3]` | 命令短名过滤器（逗号分隔） | 位置参数 | 全部 | `ALL` 的子集 |
 | CI `python-version` | CI 的 Python 版本 | workflow 字面量 | `"3.13"`（`.github/workflows/tests.yml:15`） | 固定，无矩阵 |
 
@@ -286,12 +279,10 @@ flowchart LR
 
 | 错误码 | 协议层状态 | 含义 | 触发场景 | 处理建议 |
 |-|-|-|-|-|
-| `EpsonApiUnavailable` | 传输层异常 | 网络不可达（含超时归一化） | 断连、断电、错误 IP | `probe_state` 原样抛出；工具里映射为 `UNAVAIL`/`DROP` |
 | `EpsonApiTimeout` | 传输层异常 | 单次请求超时 | 深待机、服务器卡死 | 工具里映射为 `TIMEOUT`/`HANG` |
 | `EpsonApiCommandFailed` | 应用层 | `resultCode != 0` | 命令不被固件接受（待机/参数错） | 映射为 `FAIL` |
 | `EpsonApiError` | 传输层/协议 | 401 无法解析、HTTP 非 200、坏 JSON | 挑战格式异常、5xx | 映射为 `ERR:*` |
 | `unittest.skipTest` | 测试框架 | `pyflakes` 缺失 | 精简环境 | **静默降级**：rc 仍为 0 |
-| `NameError` | Python | `wait_online` 未定义 | `tools/probe_retest_drops.py` | 一跑即崩（实测 `NameError: name 'wait_online' is not defined`，rc=1） |
 
 ## 实测验证（本模块最重要的证据）
 
@@ -308,7 +299,6 @@ flowchart LR
 | 5 | `python3 tests/test_regressions.py` | `Ran 7 tests in 0.006s` → `OK` | 0 | **只跑 7/9**：`unittest.main()` 在 `:183-184`，其后的 `UnreachableProjectorTests`(2) 被跳过 |
 | 6 | `python3 tests/test_static.py` | `Ran 1 test in 0.042s` → `OK` | 0 | 1/1；本机装了 pyflakes 才真正执行 |
 | 7 | `ruff check custom_components tests --select F,E9` | `All checks passed!` | 0 | CI 同款；范围**不含 tools/** |
-| 8 | `ruff check .` | `F401 … tools/diagnose_state.py:5:8`<br/>`F401 … tools/probe_phase23.py:5:8`<br/>`F821 Undefined name wait_online → tools/probe_retest_drops.py:79:15`<br/>`Found 3 errors.` | **1** | 3 个错误全在 `tools/`，CI 因范围限制看不见 |
 | 9 | `python3 -c "import homeassistant"` | `ModuleNotFoundError: No module named 'homeassistant'` | **1** | 本机与 CI 同构：HA 层不可测 |
 
 ### 用例分布（AST 精确统计，非估算）
@@ -343,19 +333,14 @@ flowchart LR
 | 正常（装了 pyflakes 4.1.0） | `python3 -m unittest tests.test_static -v` | `Ran 1 test ... OK`，rc=0 |
 | 屏蔽 pyflakes 后 | 注入 `MetaPathFinder` 对 `pyflakes` 抛 ImportError | `skipped 'pyflakes not installed'`，`Ran 1 test ... OK (skipped=1)`，**rc=0**，`skipped=1 failures=0 errors=0` |
 
-### tools/ 的真实缺陷（逐个核实）
+### tools/ 的现状
 
-| 缺陷 | 证据 | 实测 |
-|-|-|-|
-| `wait_online` 未定义 | `tools/probe_retest_drops.py` 调用 `await wait_online(120)`；该文件只有 `tcp_online`/`wait_server_ready`/`safe_probe`/`main` 四个定义（`grep -n "^def \|^async def "` 实测） | `python3 tools/probe_retest_drops.py 127.0.0.1` → `NameError: name 'wait_online' is not defined. Did you mean: 'tcp_online'?`，rc=1。**且只在 TCP 不通的分支触发**——设备在线时反而不会暴露 |
-| ruff 3 个错误 | 见上表第 8 行 | `diagnose_state.py:5` F401、`probe_phase23.py` F401、`probe_retest_drops.py` F821 |
-| `STEP_UNIT = 10` 与生产矛盾 | `tools/verify_round4.py:23-26`（`STEP_UNIT = 10`, `MAX_STEPS = 30`）vs `const.py:122` `FOCUS_STEP_UNIT = 1`、`const.py:105-118` 的纠正注释、`api.py:516-529`（`focus_step`） | 逻辑矛盾：该脚本用"每步 10"换算目标（`:64` `pos0 - 3*STEP_UNIT`）并以 `< STEP_UNIT` 判收敛（`:69`, `:78`），而生产实现已改为 MAX/MIN 闭环（`api.py:544-584`）。**用该脚本验收对焦会得出与集成相反的结论** |
-| 硬编码内网 IP 与 README 矛盾 | `tools/README.md:8` 声称"不提供默认值"；实际 `probe_focus.py:28`、`probe_power_state.py:20`、`probe_refresh.py:28`（三者 `os.environ.get("EPSON_HOST", "192.168.61.7")`）、`verify_round4.py:23`（`HOST = "192.168.61.7"`，连 argv 都不读） | 4 个脚本带默认 IP；另有 4 个（`probe_round3.py`、`probe_round5.py`、`probe_round6.py`、`probe_round6b.py`）用 `else ""`，既不读 env 也不校验 → 无参运行时构造出 `http://:8080/api/pjctl`。实测 `python3 tools/probe_round3.py` → `EpsonApiUnavailable: http://:8080/api/pjctl` + `Unclosed client session`，rc=1 |
-| ADB 5555 依赖 | `probe_notify_sweep.py` `ADB = ["adb","-s",f"{HOST}:5555"]`；`probe_remaining.py` 同款 | 2 个脚本硬依赖 ADB；`probe_notify_sweep.py` 的判定完全建立在截图哈希变化上（`:74-90`） |
-| 无统一退出码约定 | 12 处 `sys.exit("用法: ...")` 全部用于**用法错误**；`verify_round4.py` 无 `sys.exit`，逻辑失败只 `print("RESULT: FAIL")`（`:79`）；`verify_features.py` 只打印 `验证结果: n/m 通过`（`:105-111`） | 无法在 CI 或脚本里用退出码判定真机验收结果 |
-| `probe_results.json` 词汇表分裂 | 生产者各写各的：`probe_commands.py` 写 `"DROP(服务器崩溃/断开)"`、`probe_matrix.py` 写 `"UNREACHABLE"`、`probe_remaining.py` 写 `"HANG(挂起)"`；消费者 `probe_retest_drops.py` 只认 `startswith("DROP")` | 现有存档 36 条中 DROP **0 条**（OK 50 / FAIL 30 / UNREACHABLE 12 / HANG 1）→ 即使修好 `wait_online`，该脚本也会选出 0 个命令（"重跑 0 个 DROP 命令"） |
-| 无统一重试/超时 | 超时以 6s 为主（`diagnose_state.py:25`、`probe_phase23.py`），另有 8s（`probe_focus.py:38`、`probe_remaining.py`）、4s（`probe_retest_drops.py`）、10s（`api.py:160` 默认）；重试 3 次（`probe_matrix.py`、`probe_remaining.py`）或 4 次（`probe_retest_drops.py`）或 2 次（`probe_commands.py` `healthy()` 内的健康重试） | 无公共 helper，每个脚本自带一份 |
-| 会话未关闭 | `api.close()` 缺失：`probe_commands.py`、`probe_notify_sweep.py`、`probe_remaining.py` 三个脚本 0 处 | 实测 `probe_round3.py` 无参运行时输出 `Unclosed client session` |
+| 事实 | 证据 |
+|-|-|
+| 只保留两个脚本 | `tools/diagnose_state.py`（连接排障）、`tools/verify_full.py`（真机验收），另有 `enum_map.json` |
+| 设备地址无默认值 | 均从 `argv[1]` 或 `EPSON_HOST` 读取，缺失时打印用法并以非零码退出 |
+| 逻辑失败不进入退出码 | 两个脚本只在用法错误时 `sys.exit(...)`；验收失败仅打印结果，不适合作为自动化门禁 |
+| 不在 CI lint 范围内 | `.github/workflows/tests.yml:21` 只查 `custom_components tests` |
 
 ### CI 门禁的覆盖边界
 
@@ -375,15 +360,15 @@ flowchart LR
 
 ### 洞察
 
-- **本模块的正确性由"它能否在坏代码上变红"定义，而不是"它是否全绿"。** `tests/test_const_contract.py:1-9` 记录了它存在的唯一理由：静态检查与既有单测都没抓到 5→6 元组扩宽，真机部署后全实体 unavailable。`docs/reports/v3.10.0-release-test.md:29` 记载"已用'注入 bug → 测试必须失败'验证有效性"——这是本项目唯一有记录的"测试有效性验证"。
+- **本模块的正确性由"它能否在坏代码上变红"定义，而不是"它是否全绿"。** `tests/test_const_contract.py:1-9` 记录了它存在的唯一理由：静态检查与既有单测都没抓到 5→6 元组扩宽，真机部署后全实体 unavailable。测试有效性通过"注入 bug → 测试必须失败"的方式验证过——这是本项目唯一有记录的"测试有效性验证"。
 - **隔离手法决定了覆盖形状。** 因为绕过了 `__init__.py`，所以覆盖恰好是"零 HA 依赖的那两个模块"（`api.py`、`const.py`）加上"能被 AST 静态读出的装配约束"。这不是偶然：`api.py` 开头就写明了 `Pure aiohttp + stdlib; no Home Assistant imports so it can be tested standalone.`（`api.py:1-4`）——**可测性是设计出来的，不是测试补出来的**。
-- **真机结论的固化有固定节拍**：probe → 记录 → 改 `api.py` + `const.py` → 加 `RoundNTests`。`Round4/5/6` 的类名与 `probe_round4/5/6` 文件一一对应，docstring 里保留"真机回环 2026-11-01"这样的日期与设备型号（`tests/test_api.py:300`, `:355-356`, `:426-427`）。
+- **真机结论的固化有固定节拍**：真机实测 → 记录到 `api.py`/`const.py` 注释 → 在 `tests/test_api.py` 加用例。断言中保留设备型号与实测数值（`tests/test_api.py:300`, `:355-356`, `:426-427`）。
 - **本模块是唯一能"证伪"其他模块的地方**：`tests/test_regressions.py:89-93` 用断言锁死一个数值常量（`FOCUS_STEP_UNIT == 1`），把"曾经错过的假设"变成编译期不可回退的事实。
 
 ### 扩展指南
 
 **新增一条命令的验证（最常见的改动）**：
-1. 真机确认：写一个最小 `tools/probe_xxx.py`（复制 7 行 importlib 样板），记录固件实际接受的 `size`/`params`。
+1. 真机确认：基于 `tools/diagnose_state.py` 的 importlib 样板写最小验证脚本，记录设备实际接受的 `size`/`params`。
 2. 在 `api.py` 加高层方法（若需要）。
 3. 在 `tests/test_api.py` 加载荷断言：构造 `make_api([challenge(), ok(...)])`，`await` 方法，断言 `session.calls[1]["json"]` 整包相等（参照 `:218-244`）。
 4. 若有"失败也合法"的路径（如待机返回 None），补一个 `fail()` 分支断言（参照 `:273-275`）。
@@ -397,7 +382,7 @@ flowchart LR
 
 **新增一个 CI 门禁项**：
 1. 只在 `.github/workflows/tests.yml` 加 step；仓库没有 ruff/pytest 配置文件，所有规则必须写在命令行。
-2. 若要覆盖 `tools/`，需把 `:21` 改为 `ruff check .`——但当前 `tools/` 有 3 个既存错误，改之前必须先用 `--fix` 处理 2 个 F401 并修 `wait_online`。
+2. 若要覆盖 `tools/`，把 `:21` 改为 `ruff check .` 即可——当前全仓 `ruff check .` 已通过。
 
 ### 风格与约定
 
@@ -410,7 +395,7 @@ flowchart LR
 | 地址 | 测试用 TEST-NET 段 `192.0.2.10` / `203.0.113.1` / `203.0.113.9`（RFC 5737），**但 docstring 里仍留真实内网 `192.168.61.250`**（`tests/test_regressions.py:192`） | 同上 |
 | 中文注释 | 测试脚本使用中文说明命令语义与实测数据 | `:300`、`:355` |
 | 工具脚本样板 | 7 行 importlib 引导逐字重复，**无共用 helper** | 20/20 文件 |
-| 工具输出 | 人读文本 + emoji（`✅`/`❌`），无 JSON/机器可读输出（除 `probe_results.json`） | `verify_features.py:23` |
+| 工具输出 | 人读文本 + emoji（`✅`/`❌`），无机器可读输出 | `verify_full.py` |
 
 ### 设计哲学
 
@@ -427,6 +412,5 @@ flowchart LR
 - [ ] 新增/改测试后：`python3 -m pytest tests/ -q` 与 `python3 -m unittest discover -s tests -v` 的用例数是否都是 64（pytest 收集 64、unittest 运行 64）？
 - [ ] 修改 `tools/` 任何脚本后：`ruff check tools` 是否干净？（CI 不会替你检查）
 - [ ] 新增工具脚本后：是否使用了 `sys.argv[1]` 或 `EPSON_HOST`？**是否引入了默认 IP**？是否 `await api.close()`？
-- [ ] 若改了 `tools/probe_results.json` 的写入词汇：`probe_retest_drops.py` 的 `startswith("DROP")` 消费者是否需要同步？
 - [ ] 修改 CI workflow 后：`tools/` 是否仍被排除？是否会因为 `ruff check .` 的既存 3 个错误而变红？
 - [ ] 任何"真机验证通过"的结论：是否附了设备型号 + 日期 + 具体命令（如 `tests/test_api.py:300` 的写法）？

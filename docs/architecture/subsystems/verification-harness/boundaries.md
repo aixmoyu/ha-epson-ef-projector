@@ -12,7 +12,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | 维度 | 本领域负责 | 本领域不负责（属于其他领域） |
 |-|-|-|
 | 核心职责 | 离线单元/契约测试（`tests/` 4 文件 1020 行 64 用例）；真机现场分析探测与功能验收（`tools/` 20 个 .py + 1 .sh + 2 .json）；CI 门禁定义与执行（`.github/workflows/tests.yml:1-24`） | 生产运行时行为本身（`api.py`/`coordinator.py`/7 个平台/`__init__` 属其他 4 模块） |
-| 数据所有权 | `tools/probe_results.json`（36 条命令探测矩阵存档）、`tools/enum_map.json`（71 CONFIG + 27 NOTIFY 枚举映射）、`tests/` 内的测试替身（`FakeSession`/`FakeResponse`，`tests/test_api.py:40-92`） | `coordinator.data` 共享字典、实体状态、HA 配置项、`const.STANDBY_MODE_OPTIONS` 等生产数据（本模块只读） |
+| 数据所有权 | `tools/enum_map.json`（71 CONFIG + 27 NOTIFY 枚举映射）、`tests/` 内的测试替身（`FakeSession`/`FakeResponse`，`tests/test_api.py:40-92`） | `coordinator.data` 共享字典、实体状态、HA 配置项、`const.STANDBY_MODE_OPTIONS` 等生产数据（本模块只读） |
 | 业务规则 | 「表宽度 == 解包宽度」契约（`tests/test_const_contract.py:111-125`）；「size=token 数」载荷契约（`tests/test_api.py:235-244`）；「待机不得升级为不可达」语义（`tests/test_regressions.py:186-219`）；CI 只拦 F,E9 | 协议命令语义的正确性（由真机决定，本模块只记录）、实体命名与翻译（`strings.json`/`translations/` 属实体平台域） |
 | 变更权限 | 可新增/修改测试与探测脚本、可调整 CI 门禁范围与规则集 | **不得**修改生产代码来让测试变绿；本模块对生产代码只有读权限（`grep -rn "tests\|tools" custom_components/epson_ef/*.py` 无 import 命中，反向依赖为零） |
 
@@ -69,7 +69,6 @@ graph LR
 | `pyflakes` (≥1 个可用实例) | `tests/test_static.py:15` 的静态检查引擎 | 子进程 `python -m pyflakes` | **弱**：缺失即 `skipTest`，保障静默消失（实测 skipped=1、rc=0） |
 | `ruff` | CI lint 步骤 | 外部可执行文件 | 强（CI 内）：未安装则 lint step 失败 |
 | 真实投影仪（HB71，`192.168.61.7` 曾用作默认） | 真机探测与验收的唯一事实源 | HTTP :8080 pjctl（Digest） | 强（对 tools/）：无设备时 20 个脚本全部无法产生有效结论 |
-| 投影仪 ADB（`<IP>:5555`） | 服务器卡死后的解卡；NOTIFY 类命令的截图判定 | `adb` CLI over TCP | 弱：只有 `probe_notify_sweep.py` / `probe_remaining.py` 两个脚本需要（`tools/README.md:50-51`，`tools/probe_notify_sweep.py`，`tools/probe_remaining.py`） |
 
 ## 防腐层与协议转换 (Anti-Corruption Layer)
 
@@ -87,16 +86,16 @@ graph LR
 
 | 日期 | 变更内容 | 根因 / 触发 | 关联工件 |
 |-|-|-|-|
-| 2026-11-01 | 新增 `tests/test_const_contract.py`（3 用例）把"表宽度==解包宽度"从人工检查升级为 AST 契约 | BLOCKER-1：`WRITABLE_SELECTS` 5→6 元组而 `coordinator.py:97` 漏改，58 实体全部 unavailable | `docs/reports/v3.10.0-release-test.md:16-29`、`tests/test_const_contract.py:1-15` |
-| 2026-11-01 | 新增 `tests/test_regressions.py` 的 `EntityRegistryApiTests`，用 AST 校验 `async_get_entity_id` 实参顺序 | MAJOR-2：`(platform, DOMAIN, uid)` 与真实签名 `(domain, platform, unique_id)` 写反，字符串参数不报错、静默失效 | `tests/test_regressions.py:141-170`、`docs/reports/v3.10.0-release-test.md:31-43` |
+| 2026-11-01 | 新增 `tests/test_const_contract.py`（3 用例）把"表宽度==解包宽度"从人工检查升级为 AST 契约 | BLOCKER-1：`WRITABLE_SELECTS` 5→6 元组而 `coordinator.py:97` 漏改，58 实体全部 unavailable | `tests/test_const_contract.py:1-15` |
+| 2026-11-01 | 新增 `tests/test_regressions.py` 的 `EntityRegistryApiTests`，用 AST 校验 `async_get_entity_id` 实参顺序 | MAJOR-2：`(platform, DOMAIN, uid)` 与真实签名 `(domain, platform, unique_id)` 写反，字符串参数不报错、静默失效 | `tests/test_regressions.py:141-170` |
 | 2026-11-01 | 新增 `FocusPositioningTests`，固化"必须 MAX/MIN 连续移动 + OFF 收尾 + 取消时仍发 OFF" | MAJOR-3：按"每步 10"换算的旧算法到不了远距离目标（150 从 89 只到 128） | `tests/test_regressions.py:38-94`、`const.py:105-127` |
 | 2026-11-07 | 新增 `FocusAbsoluteTests` + `UnreachableProjectorTests`（5 用例），并把 `unittest.main()` 留在文件中部的历史缺陷暴露出来 | 真机复测对焦语义；不可达语义修正 | `tests/test_api.py:511-567`、`tests/test_regressions.py:186-219` |
-| 2026-11-07 | 真机探测脚本第 4–6b 轮全部落地（`probe_round4/5/6/6b`、`probe_focus`、`probe_refresh`、`verify_round4`），`tools/` 达 20 个 .py | 现场分析 pace：每轮确认后立即用脚本回环验证再固化进 `api.py` | `tools/`（24 个受版本控制文件） |
+| 2026-11-07 | 收敛验证脚本：保留 `diagnose_state.py`（连接排障）与 `verify_full.py`（真机验收），移除一次性探测脚本 | 一次性脚本的结论已固化进常量注释与回归测试，保留只会造成第二份事实 | `tools/` |
 | 2026-11-07 | 边界事实确认：CI 从不安装 `homeassistant`，`tools/` 不在 lint 范围内 | `base_commit` 快照时点现状，非主动变更 | `.github/workflows/tests.yml:18,21` |
 
-## 全局功能树映射（A3 合并回写）
+## 全局功能树映射
 
-> 依据：`architecture_views/function_tree.yml`（A3 业务去重合并产物，base_commit 52928ed9）。
+> 依据：`architecture_views/function_tree.yml`（跨模块业务能力合并产物）。
 > 本模块在全局功能树中参与的 `function` 节点如下；合并依据与不合并理由见该文件头部注释。
 
 | 全局 function id | 全局 function 名称 |

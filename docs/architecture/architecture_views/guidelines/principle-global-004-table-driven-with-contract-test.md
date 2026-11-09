@@ -30,7 +30,7 @@ principle_scope: global
 > `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），但 `coordinator.py` 仍按 5 元组解包 —— 静态测试与单元测试都没抓到，真机部署后每次诊断轮询都抛 `ValueError: too many values to unpack`，整个集成的所有实体变成 unavailable。
 > — `tests/test_const_contract.py:1-15`（历史记录原文）
 
-这类 bug 的特殊性：**Python 的元组解包错误只在运行到那一行时抛**，而该行只在"投影仪开机 + 第 12 次轮询"才执行——所以离线测试与真机待机状态都不会触发它（`docs/reports/v3.10.0-release-test.md` 记录的正是待机时不执行该分支而漏测）。AST 静态比对是唯一能在 CI 里拦住它的手段。
+这类 bug 的特殊性：**Python 的元组解包错误只在运行到那一行时抛**，而该行只在"投影仪开机 + 第 12 次轮询"才执行——所以离线测试与真机待机状态都不会触发它（该分支在待机时不执行，因此真机待机状态也会漏测）。AST 静态比对是唯一能在 CI 里拦住它的手段。
 
 表驱动本身的收益：新增一个可写开关 = 在表里加一行（`const.py:53-66`），装配、轮询回读、翻译键、unique_id、raw_value 属性全部自动获得；若手写，会重复 6 处样板且极易漏掉回读注册。
 

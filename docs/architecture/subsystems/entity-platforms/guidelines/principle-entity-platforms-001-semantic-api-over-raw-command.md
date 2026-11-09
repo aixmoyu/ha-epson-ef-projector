@@ -28,7 +28,7 @@ principle_scope: module
 
 1. **协议知识的单点持有**。`api.py` 的 docstring 明示它零 HA 依赖、可离线单测（`api.py:1-3`），`tests/test_api.py` 有 60+ 用例覆盖每个方法的 payload。裸串路径完全没有测试——`tests/` 里没有任何平台层用例，所以 `button.py` 的 8 个 `CONFIG_SET_QC` 参数格式**没有任何自动化保护**，只能靠真机验证。
 2. **错误语义统一**。语义方法内部 `await self.request(...)`，异常类型天然一致；裸串路径因为要自己 `try/except`，已经长出两种不一致写法：`switch.py:107`/`select.py:108` 用 `except Exception`（宽捕获），`button.py:139` 用 `except EpsonApiError`。
-3. **可验证性**。`tools/` 下的现场分析脚本复用 `api.py` 方法做真机回环（如 `tools/verify_round4.py:71` 调 `focus_step`），若生产路径走裸串，脚本验证的东西与线上跑的东西不是同一段代码。
+3. **可验证性**。`tools/` 下的现场分析脚本复用 `api.py` 方法做真机回环（如 `tools/verify_full.py`），若生产路径走裸串，脚本验证的东西与线上跑的东西不是同一段代码。
 
 ## 适用范围
 

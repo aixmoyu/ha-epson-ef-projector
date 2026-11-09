@@ -44,7 +44,7 @@ graph LR
     API["EpsonApi.request<br/>api.py:147"]
     SESS["aiohttp.ClientSession<br/>api.py:93-97"]
     subgraph "投影仪固件（进程外）"
-        HTTP["NanoHTTPD WebApiSrv :8080<br/>单线程（docs/reference/coverage-matrix.md）"]
+        HTTP["NanoHTTPD WebApiSrv :8080<br/>单线程"]
         MCU["EpsonService → IPjIf HAL → MCU/引擎"]
     end
 
@@ -429,7 +429,7 @@ sequenceDiagram
 | R-01 | **单轮轮询可远超轮询间隔** | 诊断轮 33 次串行 HTTP（17 diag + 6 switch + 4 select + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode）各 10s 上限，且 `_async_update_data` 无聚合超时（`coordinator.py:59-132`）。最坏 ≈330s，而 `update_interval` 默认 15s（`const.py:11`）→ 慢周期内所有实体的 `async_request_refresh` 与下一轮定时全部排队 |
 | R-02 | **写操作无并发保护（除电源）** | 全仓仅 `media_player.py:73` 一把 `asyncio.Lock`；`number/switch/select/button/services` 的写路径均直接 `await api.request`（如 `number.py:126`, `switch.py:106`, `select.py:107`, `button.py:138`, `services.py:64`），无 `Semaphore`、无写队列 |
 | R-03 | **色彩增益"读-改-写"竞态** | 三通道共享一条 GET，写入是"取当前三元组→替换单通道→写整串"（`number.py:381-389`）。两个通道并发写会读到同基线，后写覆盖先写 → 丢一次修改。实体无锁（`number.py:379`） |
-| R-04 | **对焦无重入保护 + 与轮询争用固件** | `goto_focus` 循环内无锁（`api.py:561-583`），并发两次定位会交错 `MAX/MIN/OFF`；且 sleep 期间（最长 2.0s + 0.45s/轮）协调器可插进来发 33 条读命令（`coordinator.py:59`），而固件是单线程 NanoHTTPD（`docs/reference/coverage-matrix.md:200` 记录引擎查询挂起会阻塞整个服务） |
+| R-04 | **对焦无重入保护 + 与轮询争用固件** | `goto_focus` 循环内无锁（`api.py:561-583`），并发两次定位会交错 `MAX/MIN/OFF`；且 sleep 期间（最长 2.0s + 0.45s/轮）协调器可插进来发 33 条读命令（`coordinator.py:59`），而固件是单线程 NanoHTTPD（引擎查询挂起会阻塞整个服务） |
 | R-05 | **确认超时不是硬上限** | `wait_for_state` 先 probe 再判 deadline（`api.py:284-292`），单次 probe 最长 15s（10s+5s），`timeout_s=10` 实际可跑到 ~25s；`_POWER_CONFIRM_TIMEOUT=10`（`media_player.py:27`）因此是软预算 |
 | R-06 | **`finally` 未 shield，马达可能不停** | 取消时 `finally` 内 `await focus_move_stop()`（`api.py:575-582`）未用 `asyncio.shield`；HA 二次取消/关停超时仍可能跳过 `OFF`，留下持续移动的马达 |
 | R-07 | **共享字典就地 mutate，无版本/无拷贝** | 实体直接改 `coordinator.data`（`media_player.py:162`, `number.py:129`, `switch.py:109`, `select.py:110`），协调器同时读取它做 merge（`coordinator.py:117`, `:125`）。dict 就地写不是原子的"快照替换"，语义上绕过了 HA「data 应整体替换」的约定 |
@@ -443,7 +443,7 @@ sequenceDiagram
 
 ## 8. 待确认 / 观察
 
-- **[待确认-1]** 固件 NanoHTTPD 是否**真的**单线程串行处理：本仓库只有行为记录（`docs/reference/coverage-matrix.md:200`），无源码可验；生产代码未假设该点（既无节流常量也无背压）。
+- **[待确认-1]** 固件 NanoHTTPD 是否**真的**单线程串行处理：本仓库只有行为记录，无源码可验；生产代码未假设该点（既无节流常量也无背压）。
 - **[待确认-2]** 深待机下 `CONFIG_GET_LIGHT_TIME` 的"服务端直接断连"与"5s 客户端超时"在本集成里被归为一类（`api.py:252-259`），无法区分"设备关着"与"设备卡住"——`probe_state` 的注释选择了前者（`api.py:248-251`）。
 - **[待确认-3]** 两次 `_async_update_data` 是否可能重叠（`async_request_refresh` 与定时器撞车时）—— 属 HA `DataUpdateCoordinator` 框架行为，本环境未安装 `homeassistant`（`import homeassistant` → `ModuleNotFoundError`），无法用代码验证；本文档只断言"单次刷新内部串行"这一可验证事实。
 - **[观察]** `_TIMEOUT`（`api.py:37`）为死常量；`coordinator.py:120` 的 `if state == "on":` 嵌在 `coordinator.py:61` 的同条件内，属冗余判断（AST 校验确认）。

@@ -1,7 +1,7 @@
 ---
 project: "ha-epson-ef-projector"
 type: index
-description: "本目录是从代码事实反向恢复的代码知识库（aet-project-analysis2 流水线产物）。全局层 5 视图 + 风险 + 6 原则 + 6 ADR + 全局功能树；模块层 5 个子系统 × 6 类产物。所有结论带 path/to/file:line 证据，frontmatter 均含 base_commit。"
+description: "本目录是从代码事实反向恢复的代码知识库。全局层 5 视图 + 风险 + 6 原则 + 6 ADR + 全局功能树；模块层 5 个子系统 × 6 类产物。所有结论带 path/to/file:line 证据，frontmatter 均含 base_commit。"
 base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 ---
 
@@ -75,60 +75,13 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | 测试 | 64 用例全离线；直跑两文件会漏 11 例 | `tests/`、`tests/test_api.py:507` |
 | CI 门禁 | ruff F,E9（不含 tools/）+ unittest（不装 homeassistant） | `.github/workflows/tests.yml:18-24` |
 
-## 本次流水线执行记录
+## 维护说明
 
-| 阶段 | 状态 | 说明 |
-|-|-|-|
-| A1 全局视图生成 | ✅ 完成 | 4 个 Subagent 并行探索落盘四视图（Gap Backfill 通过）→ 主 agent 汇总合成 scenario / risk / 6 原则 / 6 ADR |
-| A2 全局产物评审 | ⏭️ **用户跳过** | 全局产物**未经独立对抗式验证** |
-| A3 模块分割与详细探索 | ✅ 完成 | 用户选定「方案 A：5 模块单层」+「全部分析」→ 5 个 Subagent 并行落盘 6 类产物 → 全局 function_tree 合并（业务去重 M1–M4、不合并 N1–N2）→ 回写 5 个模块的 boundaries/function_tree |
-| A4 模块产物评审 | ⏭️ **用户跳过** | 模块产物**未经独立对抗式验证** |
+本知识库的结论均锚定在 frontmatter 的 `base_commit` 上，每条断言附 `path/to/file:line`。
+代码变更后需同步更新 `base_commit` 并复检相关章节；具体规则见仓库根 `AGENTS.md`。
 
-**收尾自检（主 agent 执行，非独立验证）**：
-- 全部 79 个文件 frontmatter 含 `base_commit: 52928ed9…` ✅
-- 6 份 function_tree 全部通过 `validate-function-tree.mjs --strict`（R1–R7）✅
-- 全局树 34 个 `function` 节点均具备 `module_refs` + `code_mapping` + `depends_on` ✅
-- 无模板占位残留（`[Project Name]` / `[To be filled]` / 示例 commit）✅
-- 已交叉核实并修正 2 处计数偏差：模块数 15→14（`deployment_view.md`）、tools 脚本数 26→20 py+1 sh+2 json（`logical_view.md`）
-- 已补入 1 条跨模块风险 R-10b（慢轮 7 条重复请求，实测核实：6 条来自 diag∩settings 同命令 + 1 条 product 重复读）
+以下条目无法从代码直接判定，需在真机上确认：
 
-## 版本漂移声明（2026-11-09）
-
-本知识库的 `base_commit` 是 `52928ed`。此后仓库做了一次裁剪，**知识库本身未重新生成**：
-
-**已移除的文件**
-
-- `tools/` 下 20 个一次性探测与验收脚本，现仅保留 `diagnose_state.py`、`verify_full.py`、`enum_map.json`
-- `docs/reference/`（`protocol.md`、`coverage-matrix.md`）
-- `docs/reports/`（`v3.10.0-release-test.md`）
-- `docs/research/`（`firmware-audit.md`、`reverse-methodology.md`）
-- `SECURITY.md`
-
-**已清理的内容**
-
-本知识库内**不再保留**与设备固件的交互过程描述——包括开发轮次编号、固件组件的
-静态分析工具与文件名、厂商应用的内部类名等。此类内容已从生产代码、测试与工具的
-注释中移除，本知识库同步对齐。
-
-**因此存在 163 处失效引用**
-
-分布在 26 个文件，指向上述已删文件（主要是 `tools/probe_*.py`、`docs/reference/*.md`、
-`docs/reports/*.md`）。这些引用描述的是 `52928ed` 时点的事实，**现已不可复现**。
-
-**处理方式**
-
-按 AGENTS.md §3.1，知识库不靠人工逐条改写补全——那会产生无法追溯的"粉饰"，比留着
-失效引用更糟。正确做法是等下一次代码变更时重跑 `aet-project-analysis2` 流水线，
-用新的 `base_commit` 重新生成。在此之前引用本知识库中与 `tools/`、`docs/reference/`
-相关的结论时，请先确认所述文件是否仍存在。
-
-## 未验证项（明示风险）
-
-按用户选择跳过 A2/A4 评审，故以下均**未经独立 context 核查**：
-
-1. 各处 `path/to/file:line` 的行号精度（主 agent 抽样核对了 5 处关键引用与 3 处计数，未逐条核对约 600 处引用）。
-2. 跨模块口径一致性（已发现并核对 1 处：慢轮 HTTP 数 33 vs 35 系口径差异——33 为追加条数、35 为含探针总数，非矛盾）。
-3. 各模块 Subagent 自报的定量结论（如「40 个实体裸拼命令串」「16 处 DeviceInfo」）只做了抽样复核。
-4. 各产物中的 `[待确认]` 条目（合计约 20 条）需维护者裁决或真机验证。
-
-建议后续如需要更高置信度，按 `aet-project-analysis2` 的 A2/A4 SOP 补跑对抗式验证（独立 context、try-to-refute 立场），重点核：证据行号真实性、结论越界、跨文档一致性。
+- 固件 HTTP 服务是否严格单线程串行处理（`process_view.md` 的风险评估依赖该假设）。
+- `hacs.json` 声明的最低 Home Assistant 版本 `2024.4.0` 是否为实际下界。
+- 两次 `_async_update_data` 是否可能重叠（属 Home Assistant 调度行为）。

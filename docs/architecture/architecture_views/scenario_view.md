@@ -204,7 +204,7 @@ flowchart TD
 | `send_key` | `key` 可按键名（`KEYCODES`）或纯数字 keycode | 未知键 → `HomeAssistantError` | `services.py:43-54`；`const.py:195-219` |
 | `raw_request` | 任意 `id` + `params`，**无白名单、无 admin 校验** | 异常吞成 `{"error": ...}`，经 `epson_ef_response` 事件返回；仓库内无订阅者 | `services.py:56-70` |
 
-**危险面（代码已记录但未拦截）**：`raw_request` 可发送 `CONFIG_SET_REFRESH "1"`（立即刷新并关机，`api.py:481-488` 警示）、`CONFIG_SET_AMBIENT_LIGHT "255"`（清用户光效配置，`const.py:149`）、`CONFIG_GET_ESCVP` 工厂 NVRAM 写命令（`docs/reference/protocol.md`，仓库未暴露但服务可透传）。
+**危险面（代码已记录但未拦截）**：`raw_request` 可发送 `CONFIG_SET_REFRESH "1"`（立即刷新并关机，`api.py:481-488` 警示）、`CONFIG_SET_AMBIENT_LIGHT "255"`（清用户光效配置，`const.py:149`）、`CONFIG_GET_ESCVP` 工厂 NVRAM 写命令（仓库未暴露该命令，但 `raw_request` 服务可透传）。
 
 ## 3. 场景 × 四视图追溯矩阵
 

@@ -198,7 +198,7 @@
       - id: '10512'
         type: function_spec
         name: 缺陷来源与真机证据
-        description: 三类缺陷均来自 `docs/reports/v3.10.0-release-test.md` 的 BLOCKER-1/MAJOR-2/MAJOR-3 记录；回归用例的 docstring 保留了现象、根因与真实复现地址（`tests/test_regressions.py:1-11`, `:141-148`, `:186-193`）。
+        description: 三类缺陷均来自真机测试中发现的发布阻断问题；回归用例的 docstring 保留了现象、根因与真实复现地址（`tests/test_regressions.py:1-11`, `:141-148`, `:186-193`）。
     - id: '106'
       type: function
       name: 锁定配置表结构契约
@@ -251,7 +251,7 @@
       - id: '10612'
         type: function_spec
         name: 拦住的事故
-        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，58 个实体全部 unavailable（`tests/test_const_contract.py:1-9`，`docs/reports/v3.10.0-release-test.md:16-22`）。
+        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，58 个实体全部 unavailable（`tests/test_const_contract.py:1-9`）。
     - id: '107'
       type: function
       name: 拦截未定义名字
@@ -281,177 +281,87 @@
       - id: '10711'
         type: function_constraint
         name: 与 ruff 的职责重叠但不互替
-        description: CI 的 `ruff check custom_components tests --select F,E9` 已覆盖生产包的未定义名（实测 All checks passed），故 test_static 在 CI 中是冗余保险；但它只扫生产包，对 `tools/` 完全无覆盖——而 `tools/` 恰有真实的 F821（`tools/probe_retest_drops.py`）。
+        description: CI 的 `ruff check custom_components tests --select F,E9` 已覆盖生产包的未定义名（实测 All checks passed），故 test_static 在 CI 中是冗余保险；但它只扫生产包，对 `tools/` 完全无覆盖。
   - id: '20'
     type: directory
-    name: 真机现场分析探测域
-    description: 必须有真实投影仪在场的能力集合（20 个 .py + 1 个 .sh + 2 个 .json + README.md，`git ls-files tools` = 24 项）。全部脚本用 importlib 直载生产 `api.py`（20/20 命中），并与真实固件交互。
+    name: 真机验证域
+    description: 需要有真实投影仪在场的能力集合（`tools/diagnose_state.py`、`tools/verify_full.py`、`tools/enum_map.json`）。两个脚本都用 importlib 直载生产 `api.py`，因此验证的是集成实际下发的命令。
     children:
     - id: '201'
       type: function
-      name: 探测固件命令能力
-      description: 对 `CONFIG_GET_*` / `CONFIG_SET_*` / `NOTIFY_*` 做逐个或矩阵式试探，记录 OK / FAIL / DROP / HANG 四种结局，并把结论增量落盘。对应 12 个 probe_*.py。
+      name: 排障连接异常
+      description: 系统化定位"是哪个命令让设备 HTTP 服务失去响应"，并确认唤醒键是否有效。
       depends_on: ["101"]
       node_context:
-        keywords: ["firmware_probe", "command_matrix", "capability_discovery", "result_vocabulary"]
+        keywords: ["health_probe", "server_hang", "diagnose"]
         code_mapping:
-          - "tools/probe_commands.py:28-120"
-          - "tools/probe_matrix.py:24-152"
-          - "tools/probe_remaining.py:27-85"
-          - "tools/probe_retest_drops.py:64-121"
-          - "tools/probe_round2.py"
-          - "tools/probe_round3.py"
-          - "tools/probe_round5.py"
-          - "tools/probe_round6.py"
-          - "tools/probe_round6b.py"
+          - "tools/diagnose_state.py:1-59"
       children:
       - id: '20101'
         type: function_point
-        name: 单命令全量扫描
-        description: 36 个短名逐个发 `CONFIG_GET_<名>`，params=None 先行；只有"非 DROP 且非 OK"才继续 0/1/2 参数变体，每步之间 sleep 1.5–2s。
-        spec: "`ALL` 36 项（`tools/probe_commands.py`）；`PARAM_VARIANTS = [None, \"0\", \"1\", \"2\"]`"
-        input: 投影仪 IP / 可选端口与短名过滤器
-        process: 健康探针 → 单发 → 记录 → 变体
-        output: 写入 probe_results.json
-      - id: '20102'
-        type: function_point
-        name: 参数矩阵分批试探
-        description: 命令 × 参数变体分批跑，已完成的命令自动跳过，可中断重跑；带 `wait_online` 等待上线与 3 次重试。
-        spec: "批大小 `BATCH = 9`（`tools/probe_matrix.py`）"
-        input: 同上
-        process: resilient_call 内 tcp 探测 + wait_online
-        output: 结论字符串 OK/FAIL/UNREACHABLE
+        name: 逐条判别挂起责任
+        description: 对 5 条代表性命令（PRODUCT_NAME / LIGHT_TIME / SALES_AREA / PJ_STANDBY_MODE / KEYEVENT 26）逐个带 6s 超时执行，把结局分类为 200 / TIMEOUT / FAIL / UNAVAIL / ERR，再等数秒复查电源态。
+        spec: "`asyncio.wait_for(..., timeout=6)`（`tools/diagnose_state.py:25-36`）"
+        input: 投影仪 IP
+        process: 逐条 try/except 五分支
+        output: 人读的判别表
       - id: '20111'
         type: function_constraint
-        name: 每次探测都可能卡死固件
-        description: NanoHTTPD 单线程，单次挂起即 8080 全不可用，只能重启设备或用 ADB `am force-stop` + `am start-service` 解卡（`tools/README.md:19-20`，`tools/probe_remaining.py`）。因此探测顺序必须按破坏性升序，且脚本自身不保证可重入。
+        name: 挂起时只能重启设备
+        description: 固件 HTTP 服务单线程，一次挂起即 8080 全不可用，客户端超时只是放弃。集成代码无自愈逻辑，恢复需重启投影仪。
     - id: '202'
       type: function
       name: 验收真机功能
-      description: 对集成已实现的功能做真机回环验收：开关机、光源时长、按键、启动模式、刷新定时器、对焦。3 个 verify_*.py + experiment_set.py。
-      depends_on: ["101", "201"]
+      description: 对集成已实现的功能做真机回环验收：可达性、产品型号、灯光时长、启动模式、序列号、按键注入，以及深度待机下的唤醒可靠性。
+      depends_on: ["101"]
       node_context:
-        keywords: ["device_acceptance", "roundtrip_verify", "restore_baseline", "manual_gate"]
+        keywords: ["device_acceptance", "roundtrip_verify", "standby_wake"]
         code_mapping:
-          - "tools/verify_features.py:1-115"
           - "tools/verify_full.py:1-128"
-          - "tools/verify_round4.py:1-84"
-          - "tools/experiment_set.py:1-91"
       children:
       - id: '20201'
         type: function_point
         name: 功能项逐条回环
-        description: 每个功能先读原值 → 写新值 → 读回比对 → 恢复原值，逐条打印 ✅/❌ 并汇总 `n/m 通过`。
-        spec: "`record()` 打印 ✅/❌（`tools/verify_features.py:23-29`），结束打印 `验证结果: n/m 通过`（`:105-111`）"
+        description: 每个功能先读原值 → 写新值 → 读回比对 → 恢复原值，逐条打印 ✅/❌。
+        spec: "`record()` 打印 ✅/❌ 并汇总通过率（`tools/verify_full.py`）"
         input: 投影仪 IP
         process: 读写回环 + 汇总
         output: 人读的通过率文本
       - id: '20202'
         type: function_point
-        name: 复刻实体层算法做对照
-        description: `verify_round4.py` 自己实现"马达停稳轮询"（连续两次 POS 读数一致视为停稳）来对照 `number.py` 的行为，而不是调用生产实现。
-        spec: "`settled()` 每 0.6s 轮询，超时 3–6s（`tools/verify_round4.py:29-39`）"
-        input: api 实例
-        process: 轮询 get_focus_position
-        output: 稳定后的位置
+        name: 深待机唤醒可靠性
+        description: 通过 HTTP 指令关机后，测试深度待机状态下能否被唤醒，并记录失败情形。
+        spec: "先 `KEYEVENT 26` 关机，再观察是否可用 HTTP 唤醒"
+        input: 投影仪 IP
+        process: 关机 → 等待 → 唤醒 → 判定
+        output: 唤醒成功率
       - id: '20211'
         type: function_constraint
         name: 结论不进入退出码
-        description: 三个 verify 脚本都只在用法错误时 `sys.exit(...)`（12 处），逻辑失败仅打印 "RESULT: FAIL" 后正常返回——实测 `python3 tools/verify_round4.py` 无设备时 rc=1 是异常冒泡所致，而非判定失败；一旦设备在场并判定 FAIL，脚本仍会以 rc=0 结束。
+        description: 脚本只在用法错误时 `sys.exit(...)`；逻辑失败仅打印结果后正常返回，不适合作为自动化门禁。
     - id: '203'
       type: function
-      name: 判别服务器健康与解卡
-      description: 系统化定位"是哪个命令把服务器打挂的"，并在挂起后用 ADB 重启 WebApi 服务恢复。
-      depends_on: ["101"]
+      name: 存档固件命令枚举
+      description: 把固件命令枚举名与内部数值的映射沉淀成 JSON，供核对代码里用到的命令 id 是否合法。
+      depends_on: []
       node_context:
-        keywords: ["health_probe", "adb_unwedge", "server_hang", "diagnose"]
+        keywords: ["enum_map", "command_enum", "reference_data"]
         code_mapping:
-          - "tools/diagnose_state.py:1-60"
-          - "tools/probe_remaining.py:35-48"
-          - "tools/probe_commands.py:52-58"
+          - "tools/enum_map.json"
+          - "tools/README.md"
       children:
       - id: '20301'
         type: function_point
-        name: 逐条判别挂起责任
-        description: 对 5 条代表性命令（PRODUCT_NAME / LIGHT_TIME / SALES_AREA / PJ_STANDBY_MODE / KEYEVENT 26）逐个带 6s 超时执行，把结局分类为 200 / TIMEOUT / FAIL / UNAVAIL / ERR，再等 8s 复查电源态。
-        spec: "`asyncio.wait_for(..., timeout=6)`（`tools/diagnose_state.py:25-36`）"
-        input: 投影仪 IP
-        process: 逐条 try/except 五分支
-        output: 人读的判别表
-      - id: '20302'
-        type: function_point
-        name: ADB 重启 WebApi 服务
-        description: `adb -s <IP>:5555 shell "am force-stop ...; am start-service -n .../.EpsonWebApiServer"`。注释明确：必须用 `am start-service`，用 `am start-foreground-service` 会在 5 秒后被 Android 杀掉。
-        spec: "`tools/probe_remaining.py`，`timeout=15`"
-        input: 投影仪 IP（ADB 口 5555 需已开）
-        process: subprocess.run 一条 shell 串
-        output: 服务重启（输出被 capture 丢弃）
+        name: 映射固件枚举名到内部数值
+        description: 三段结构：`SMFConfigID` 71 条、`SMFNotifyID` 27 条、`ConfigResultCode`（空桶）。
+        spec: "生产代码用到的 46 个 `CONFIG_*` 与 20 个 `NOTIFY_*` 全部能在映射里找到"
+        input: 固件枚举清单
+        process: 提取为 name→int 字典
+        output: `tools/enum_map.json`
       - id: '20311'
         type: function_constraint
-        name: 解卡依赖 ADB 5555
-        description: 该能力假设投影仪已开网络调试且 `<IP>:5555` 可连（`tools/README.md:50-51`）；纯协议研究用不到它，但一旦服务器卡死又没有 ADB，就只剩人工断电重启。
-    - id: '204'
-      type: function
-      name: 存档探测结论
-      description: 把真机探测结果与固件枚举映射沉淀成两个 JSON 存档，供后续轮次与文档交叉引用。定位是"历史存档"，不是事实来源。
-      depends_on: ["201"]
-      node_context:
-        keywords: ["probe_archive", "enum_map", "result_schema", "historical_record"]
-        code_mapping:
-          - "tools/probe_results.json"
-          - "tools/enum_map.json"
-          - "tools/README.md:53-55"
-      children:
-      - id: '20401'
-        type: function_point
-        name: 记录命令探测矩阵
-        description: 结构为 `{短名: {参数键: 结局, "_done": bool}}`，实测 36 个条目全部 `_done=true`；参数键取字符串化的 None/"0"/"1"/"2"。
-        spec: "现有值分布：OK 50 / FAIL 30 / UNREACHABLE 12 / HANG 1；DROP 0 条"
-        input: 各 probe 脚本的结论
-        process: 逐条 json.dump（缩进 1）
-        output: 36 条的矩阵存档
-      - id: '20402'
-        type: function_point
-        name: 映射固件枚举名到 HAL 数值
-        description: 从设备 `epsonlogic.jar` 提取的三段结构：`SMFConfigID` 71 条、`SMFNotifyID` 27 条、`ConfigResultCode` 0 条（空桶）。
-        spec: "生产代码用到的 46 个 CONFIG_* 与 20 个 NOTIFY_* 全部能在映射里找到；反向有 25 个 CONFIG 枚举从未被使用"
-        input: 固件枚举清单
-        process: 人工/脚本提取为 name→int 字典
-        output: enum_map.json
-      - id: '20411'
-        type: function_constraint
-        name: 存档不是事实来源
-        description: 两个 JSON 都由多个脚本以不同词汇表写入（probe_commands 写 "DROP(服务器崩溃/断开)"、probe_matrix 写 "UNREACHABLE"、probe_remaining 写 "HANG(挂起)"），消费者 `probe_retest_drops.py` 只认 `startswith("DROP")`——当前存档里 0 条 DROP，该脚本即使修好 `wait_online` 也会选出 0 个命令。存档只能当线索，结论以重跑为准。
-    - id: '205'
-      type: function
-      name: 监视待机失联
-      description: 长期（100 轮 × 10s）观测 ping / 8080 / 5555 三路状态变化，并在首次失联时发 WOL 魔术包测试网络唤醒能力。
-      depends_on: []
-      node_context:
-        keywords: ["standby_watch", "wol", "timeline", "long_running"]
-        code_mapping:
-          - "tools/standby_watch.sh:1-56"
-      children:
-      - id: '20501'
-        type: function_point
-        name: 三路状态采样
-        description: 每 10s 采一次 `ping -c1 -W1`、`nc -z 8080`、`nc -z 5555`，状态串变化才写日志，否则只追加一行。
-        spec: "`for i in $(seq 1 100)`（`:33`），日志 `/tmp/standby_watch.log`"
-        input: 投影仪 IP + 可选 MAC/广播地址
-        process: 三路探测 + 状态机
-        output: 时间线日志
-      - id: '20502'
-        type: function_point
-        name: 魔术包试探网络唤醒
-        description: 构造 6×0xFF + 16×MAC 的 102 字节包，向广播地址的 9/7 端口各发一次，5 秒内 ping 不通才发。
-        spec: "`printf '\\xff%.0s' {1..6}` + 16 次 MAC（`:19-24`）"
-        input: MAC 与广播地址
-        process: xxd -r -p 拼二进制后 nc -u
-        output: 日志中的"WOL 唤醒成功/无效果"
-      - id: '20511'
-        type: function_constraint
-        name: 依赖 GNU 风格工具参数
-        description: `nc -z -G 2` 与 `ping -W1`、`nc -u -w 1 -b` 的语义在 macOS 与 GNU netcat 上不一致（macOS nc 无 `-G`），脚本无平台探测，跨平台运行可能静默给出错误状态。
+        name: 只读参考资料
+        description: 该存档不参与运行时，也不替代代码注释中的实测结论；新增命令时需手工同步。
   - id: '30'
     type: directory
     name: 门禁执行域
@@ -490,10 +400,10 @@
       - id: '30112'
         type: function_constraint
         name: 门禁不覆盖 tools
-        description: lint 范围只有 `custom_components tests`；`ruff check .` 实测 3 errors、rc=1（`tools/diagnose_state.py:5`、`tools/probe_phase23.py` F401；`tools/probe_retest_drops.py` F821），全部落在门禁之外，CI 依旧全绿。
+        description: lint 范围只有 `custom_components tests`；本地 `ruff check .` 已通过，但 `tools/` 的改动不会触发 CI 失败。
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+# 全局功能树映射（见 architecture_views/function_tree.yml）
 #   本模块参与的全局 function 节点 id: 81, 82, 83, 84
 #   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
 #         两者通过上述 id 对齐, 模块边界不因合并而改变。

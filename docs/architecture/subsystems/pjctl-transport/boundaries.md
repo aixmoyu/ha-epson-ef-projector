@@ -84,9 +84,9 @@ graph LR
 |2026-11-01|`set_refresh_timer` 改为只发 `"0 <h>"`，拒绝 `"1"`|`SET_REFRESH "1"` = 立即开始刷新并关机（`api.py:481-488`）|`const.py:50-52`；`number.py:143-152`|
 |2026-11-01|固化「不实现危险变体」的边界：光效槽 11、氛围灯 `"255"`、ESCVP 工厂写命令一律不暴露|会清用户配置或进入工厂态（`const.py:146-149`, `:179-183`）|本文件 §防腐层|
 
-## 全局功能树映射（A3 合并回写）
+## 全局功能树映射
 
-> 依据：`architecture_views/function_tree.yml`（A3 业务去重合并产物，base_commit 52928ed9）。
+> 依据：`architecture_views/function_tree.yml`（跨模块业务能力合并产物）。
 > 本模块在全局功能树中参与的 `function` 节点如下；合并依据与不合并理由见该文件头部注释。
 
 | 全局 function id | 全局 function 名称 |

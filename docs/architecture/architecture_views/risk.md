@@ -57,7 +57,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 
 | 风险 ID| 故障域 | 组件 | 当前可用性 | 目标可用性 | SPOF | 冗余策略 | 故障恢复策略 | RTO / RPO |
 |-|-|-|-|-|-|-|-|-|
-| R-17 | 固件 `WebApiSrv` 单线程挂起 | NanoHTTPD :8080 | 挂起即 8080 全不可用（客户端超时只是放弃） | — | 是 | 无 | **代码内无自愈**：只能物理重启设备（复位或断电重启）；ADB 解卡曾用于排障，相关脚本已于 2026-11-09 移除，未进入集成 | RTO=人工分钟级 / RPO=期间所有命令丢失 |
+| R-17 | 固件 `WebApiSrv` 单线程挂起 | NanoHTTPD :8080 | 挂起即 8080 全不可用（客户端超时只是放弃） | — | 是 | 无 | **代码内无自愈**：只能物理重启设备（复位或断电重启） | RTO=人工分钟级 / RPO=期间所有命令丢失 |
 | R-18 | 投影仪市电断电 / 深待机断网 | 设备整体 | 该 entry 全部实体 `unavailable` | — | 是 | 无 | 来电后下一轮自动恢复（`coordinator.py:42-45`）；**无远程唤醒**（WOL 实测无效） | RTO=人工开机 / RPO 不适用 |
 | R-19 | 局域网断连 / DHCP 续租失败 | 网络 | 同上 | — | 是 | 无 | 只能持续轮询等恢复 | RTO=人工 / 不适用 |
 | R-20 | HA 重启 / 集成 reload | 集成整体 | 全部实体短暂不可用 | — | 是 | 无 | 重新 setup；身份从 `.storage` 恢复；乐观态由 `RestoreEntity` 恢复（`__init__.py:53-76`） | RTO≈HA 启动 + 首次 refresh / RPO=乐观态可能回退到上次写入值 |
@@ -69,17 +69,16 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | 风险 ID| 威胁 | 攻击面 | OWASP 类别 | 当前防护 | 漏洞等级 | 利用难度 | 改进措施 |
 |-|-|-|-|-|-|-|-|
 | R-23 | 任意 pjctl 命令注入（含高危写） | `epson_ef.raw_request` 服务：**无命令白名单、无参数校验、无 `require_admin`** | A01 权限控制失效 | 无（`services.py:56-94` 全文无 `require_admin`） | 中 | 低（任何可调服务的 HA 用户/自动化即可） | 加 `@require_admin`；对 `CONFIG_SET_REFRESH "1"`（立即刷新并关机，`api.py:481-488` 自己警示）等做参数级拒绝 |
-| R-24 | 明文固件凭据入库 + 全链路无 TLS | `const.py:15-19` 的 `DIGEST_USER`/`DIGEST_PASSWORD`；`api.py:79` 硬编码 `http://` | A02 加密失效 | 无；注释声明这是固件出厂内置、全 HB7x 家族共用（`const.py:17-18`），同一份也抄在 `docs/reference/protocol.md:20-22` | 中 | 低（需同网段） | 属"固件固定、不可轮换"的既成事实，只能网络隔离（VLAN/ACL）+ 文档明示；不要把 8080 映射到公网 |
-| R-25 | 同网段任意主机可控制投影仪 | TCP 8080 明文 + 凭据公开 | A01/A07 | 无 IP 白名单 | 中 | 低 | 部署侧 VLAN 隔离；仓库内仅有文字建议（原 `SECURITY.md` 已于 2026-11-09 移除，同义内容见 `README.md` 安全节）但无代码可校验 |
+| R-24 | 明文固件凭据入库 + 全链路无 TLS | `const.py:15-19` 的 `DIGEST_USER`/`DIGEST_PASSWORD`；`api.py:79` 硬编码 `http://` | A02 加密失效 | 无；注释声明这是固件出厂内置、全 HB7x 家族共用（`const.py:17-18`），该常量在 `const.py` 中另有注释说明其来源 | 中 | 低（需同网段） | 属"固件固定、不可轮换"的既成事实，只能网络隔离（VLAN/ACL）+ 文档明示；不要把 8080 映射到公网 |
+| R-25 | 同网段任意主机可控制投影仪 | TCP 8080 明文 + 凭据公开 | A01/A07 | 无 IP 白名单 | 中 | 低 | 部署侧 VLAN 隔离；仓库内仅有文字建议（见 `README.md` 安全节）但无代码可校验 |
 | R-26 | ADB 5555 长期开启 | 设备 ADB 调试口 | A05 安全配置错误 | 无 | 中 | 低 | 文档明示仅排障期使用，用完关闭（`tools/README.md:50-51`） |
 | R-27 | 事件总线广播固件原始返回 | `epson_ef_response` 事件（`services.py:67-70`） | A09 日志与监控不足 | 无权限过滤 | 低 | 低 | 无（事件本身不含凭据）；如担心可在 payload 里脱敏 |
-| R-28 | 维护者内网地址入库 | `tools/probe_focus.py:28`、`tools/probe_refresh.py:28`、`tools/probe_power_state.py:20`、`tools/verify_round4.py:23` 默认 `192.168.61.7`；`tests/test_regressions.py:192` 注释含 `192.168.61.250` | A05 | 无 | 低 | 低 | 发布前去除默认值（与 `tools/README.md:8` 自述"不提供默认值"矛盾） |
 
 ## 容量与扩展性风险
 
 | 资源/瓶颈点 | 当前容量 | 当前利用率 | 短期预测 | 长期预测 | 扩容阈值 | 突破/扩容方案 |
 |-|-|-|-|-|-|-|
-| 单 entry 实体数 | 58 个（固定枚举，不可动态增减） | — | 随固件能力适配持续增长（v3.6→v3.10 从少量增至 58） | 固件剩余未适配 28 GET + 13 SET + 7 NOTIFY（`docs/reference/coverage-matrix.md`）仍可能继续增 | 实体数增长会线性放大诊断轮 HTTP 次数（当前 33–35） | 诊断轮改为按需/分批；或把只读诊断降为显式服务调用 |
+| 单 entry 实体数 | 58 个（固定枚举，不可动态增减） | — | 随固件能力适配持续增长（v3.6→v3.10 从少量增至 58） | 固件仍存在未适配的读取与写入命令，能力面可能继续增长 | 实体数增长会线性放大诊断轮 HTTP 次数（当前 33–35） | 诊断轮改为按需/分批；或把只读诊断降为显式服务调用 |
 | 慢诊断轮 HTTP 次数 | 33–35 次/12 轮 | 每条 0.2s 间隔 ≈ 7s 基线 | 同上 | 同上 | 超过 `poll_interval` × 12 | 见 R-09 |
 | 多设备（多 entry） | 未验证 | — | 服务未指定 entity_id 时取"第一个 entry"（`services.py:31-35`） | 语义在多设备下含糊 | 2 台 | 服务强制要求 entity_id，或按 device_id 路由 |
 
@@ -96,11 +95,10 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | 不可达分支 | 代码债 | `__init__.py:172-176` 依赖 `get_product_name` 抛错，但其内部 `except EpsonApiError: return None`（`api.py:295-300`）→ 该分支死代码 | 中等 | 让 `get_product_name` 抛错，或删除该 try/except 并注明真实降级点在协调器首刷 |
 | 测试结构 | 测试债 | `unittest.main()` 置于文件中部的类之间（`tests/test_api.py:507-508`、`tests/test_regressions.py:183-184`）→ 直跑只执行 42/64 与 7/9 | 严重 | 把 `unittest.main()` 移到文件末尾（或删除，统一用 discover/pytest） |
 | HA 运行时零覆盖 | 测试债 | CI 不安装 `homeassistant`（`.github/workflows/tests.yml:18`），7 个平台 + config_flow + services + diagnostics 的装配零自动化验证；历史已因此出过全实体不可用 | 严重 | 引入 `pytest-homeassistant-custom-component` 与最小 setup/实体装配冒烟测试 |
-| `tools/` 无门禁 | 测试债 | CI 的 ruff 范围不含 `tools/`（`.github/workflows/tests.yml:21`），本地 `ruff check .` 已全绿，但 CI 范围始终不含 `tools/`，脚本腐化不会让 CI 变红 | 中等 | 把 `tools/` 纳入 CI lint 范围 |
-| 测试替身与生产实现分叉 | 测试债 | `tools/verify_round4.py:24` 自复刻旧假设 `STEP_UNIT = 10`，与 `const.py:122` `FOCUS_STEP_UNIT = 1` 矛盾 | 中等 | 脚本改为 import 生产常量 |
+| `tools/` 无门禁 | 测试债 | CI 的 ruff 范围不含 `tools/`（`.github/workflows/tests.yml:21`），本地 `ruff check .` 已全绿，但 CI 范围始终不含 `tools/` | 轻微 | 把 `tools/` 纳入 CI lint 范围 |
 | 发布工程 | 工程债 | 0 tag、0 remote、无 release workflow，版本号唯一载体是 `manifest.json:13`；漏改即 HACS 显示旧版 | 中等 | 加 tag/release workflow 与版本一致性校验 |
-| 依赖声明 | 工程债 | `pytest` 未声明（无 requirements/CI 未装），但文档写 `pytest tests/`（`docs/reports/v3.10.0-release-test.md:32`）；`ruff` 无配置无版本锁 | 轻微 | 加 `requirements-dev.txt` 或 pyproject 的 optional-dependencies |
-| 文档漂移 | 文档债 | `docs/reference/coverage-matrix.md` 590 行、`docs/reference/protocol.md` 161 行记录了历史轮次结论并已被后续轮次修正（如"GET_FOCUS 挂死""INC/DEC 步长 ±10"），部分旧结论仍留在正文 | 中等 | 在每节标注"第 N 轮已修正"，或把历史结论移入附录 |
+| 依赖声明 | 工程债 | `pytest` 未声明（无 requirements/CI 未装），但无 requirements 声明 pytest；`ruff` 无配置无版本锁 | 轻微 | 加 `requirements-dev.txt` 或 pyproject 的 optional-dependencies |
+| 文档漂移 | 文档债 | 协议结论分散在 `const.py` 注释与 `api.py` docstring 中，部分早期结论已被后续实测修正，历史版本仍可能被误引 | 中等 | 保持注释与代码同提交；已推翻的结论就地标注 |
 
 ## 风险汇总（按优先级）
 
@@ -113,7 +111,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 
 ## 待确认（无法从仓库内证实）
 
-- **[待确认: 固件 NanoHTTPD 是否真的单线程串行处理？]** 依据仅是 `docs/reference/coverage-matrix.md` 的行为记录（原 `docs/research/firmware-audit.md` 已于 2026-11-09 移除），无固件源码可验。生产代码未假设该点（既无节流常量也无背压设计），故 R-09/R-17 的严重度依赖此假设成立。
+- **[待确认: 固件 NanoHTTPD 是否真的单线程串行处理？]** 依据仅是 固件行为记录 的行为记录（原 该结论来自早期固件分析），无固件源码可验。生产代码未假设该点（既无节流常量也无背压设计），故 R-09/R-17 的严重度依赖此假设成立。
 - **[待确认: 两次 `_async_update_data` 是否可能重叠？]** 属 HA `DataUpdateCoordinator` 框架调度行为；本分析环境未安装 `homeassistant`（`import homeassistant` → `ModuleNotFoundError`），无法代码验证。本报告只断言"单次刷新内部串行"这一可验证事实（`coordinator.py:84-132` 无 `gather`/`create_task`）。
-- **[待确认: 最低可运行 HA 版本？]** `hacs.json:3` 声明 2024.4.0，实测环境为 HA 2026.9.3（`docs/reports/v3.10.0-release-test.md:7`），中间版本无任何验证证据。
+- **[待确认: 最低可运行 HA 版本？]** `hacs.json:3` 声明 2024.4.0，而 CI 与本地实测均只覆盖 Python 3.13，中间版本无验证证据。
 - **[待确认: probe_state 的 liveness 返回 resultCode!=0 时的语义？]** 会抛 `EpsonApiCommandFailed`，在 setup 阶段被 `__init__.py:172-176` 当作不可达（该分支本身不可达，见技术债），实际路径未测试覆盖。

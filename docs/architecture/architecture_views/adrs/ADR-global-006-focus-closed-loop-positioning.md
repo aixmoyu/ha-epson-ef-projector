@@ -88,4 +88,3 @@ accepted（2026-11-07 真机复测后替换原"按 ±10 步数换算"实现）
 - **现存缺口**：`finally` 内的 `await focus_move_stop()` **未** `asyncio.shield`（`api.py:575-582`），二次取消仍可能跳过 `OFF`（`risk.md` R-03）。
 - **现存缺口**：`goto_focus` 与实体 setter 均无锁（`api.py:561-583`、`number.py:282-301`），并发两次定位会交错驱动马达（`risk.md` R-02）。
 - **文档残留**：`number.py:229` 的类 docstring 仍写"实测一步 = 10 个单位"，与 `const.py:108-118` 的新结论矛盾，属未清理的旧假设，改动该文件时应一并修正。
-- `tools/verify_round4.py:24` 另有一份 `STEP_UNIT = 10` 的旧假设副本，**不要**用它验证对焦（`risk.md` 技术债表已记录）。

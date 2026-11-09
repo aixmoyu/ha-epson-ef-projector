@@ -1,7 +1,7 @@
 ---
 project: "ha-epson-ef-projector"
 type: adr
-id: ADR-verification-harness-004
+id: ADR-verification-harness-003
 description: "测试引导逻辑（伪包注入 4 行）选择在 3 个测试文件中逐字复制，而不是抽成 tests/_bootstrap.py 共享模块。理由是保持『每个测试文件可单文件执行、可单文件拷走』与 discover 顺序无关性；代价是三处必须手工同步，且已有一处（test_const_contract.py）注入了伪包却根本不 import 任何生产模块的死代码。"
 base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 status: accepted
@@ -14,7 +14,7 @@ code_refs:
   - "tests/test_static.py:1-42"
 ---
 
-# ADR-004: 测试引导逻辑复制而非共享模块
+# ADR-003: 测试引导逻辑复制而非共享模块
 
 ## 状态
 

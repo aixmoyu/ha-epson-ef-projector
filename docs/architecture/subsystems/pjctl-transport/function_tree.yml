@@ -347,7 +347,7 @@
       description: 本方法只做 `int(target)`，不按 0–264 行程做边界校验（`api.py:565`）；行程约束由实体层的 `FOCUS_MIN/FOCUS_MAX`（`number.py:237-238`）承担，绕过实体的直接调用可让马达冲向端点。
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 全局功能树映射（A3 合并回写，见 architecture_views/function_tree.yml）
+# 全局功能树映射（见 architecture_views/function_tree.yml）
 #   本模块参与的全局 function 节点 id: 10, 11, 12, 131, 132, 133, 134
 #   说明: 本文件描述模块内能力结构; 全局文件按业务能力重组并携带 module_refs,
 #         两者通过上述 id 对齐, 模块边界不因合并而改变。

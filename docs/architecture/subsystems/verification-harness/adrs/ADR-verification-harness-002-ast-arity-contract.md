@@ -12,14 +12,13 @@ code_refs:
   - "custom_components/epson_ef/const.py:53-92"
   - "custom_components/epson_ef/const.py:138-142"
   - "custom_components/epson_ef/button.py:17-83"
-  - "docs/reports/v3.10.0-release-test.md:16-29"
 ---
 
 # ADR-002: 用 AST 双向宽度比对锁定表-消费者契约
 
 ## 状态
 
-accepted（2026-11-01 事故后立即建立，`docs/reports/v3.10.0-release-test.md:29` 记载"已用'注入 bug → 测试必须失败'验证有效性"）
+accepted（2026-11-01 事故后立即建立，测试有效性通过"注入 bug → 测试必须失败"的方式验证过）
 
 ## 1. 背景
 
@@ -29,7 +28,7 @@ accepted（2026-11-01 事故后立即建立，`docs/reports/v3.10.0-release-test
 - 一旦开机并到达诊断周期，每次轮询抛 `ValueError: too many values to unpack (expected 5, got 6)`；
 - coordinator 每轮失败 → **58 个实体全部 unavailable**。
 
-静态检查（当时只有 ruff F,E9）与既有单测都没抓到。真机部署后才暴露（`docs/reports/v3.10.0-release-test.md:16-22`）。
+静态检查（当时只有 ruff F,E9）与既有单测都没抓到。真机部署后才暴露（`tests/test_const_contract.py` 的 docstring 有记录）。
 
 **技术背景**：4 张声明式元组表驱动 58 个实体中的大部分：
 
@@ -116,6 +115,6 @@ def _unpack_arities(name):     # 消费侧：扫全部 *.py，For + comprehensio
 
 ## 备注
 
-- 事故的完整记录与"注入 bug 验证有效性"的做法见 `docs/reports/v3.10.0-release-test.md:16-29`。
+- 事故记录见 `tests/test_const_contract.py:1-9`。
 - 该决策与全局原则 `architecture_views/guidelines/principle-global-004-table-driven-with-contract-test.md` 一致：表驱动必须成对出现宽度契约测试。
 - 若未来表数量显著增长，`_parse()` 的重复 `ast.parse`（每表每用例重新 parse，`tests/test_const_contract.py:35-36`）需要加缓存；当前 4 表 × 14 文件总耗时 0.085s，不值得优化。

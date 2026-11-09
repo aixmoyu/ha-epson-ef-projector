@@ -98,4 +98,4 @@ accepted（实现于 3.10.0；config entry 的 unique_id 仍保留 `host:port`�
 ## 备注
 
 - 全局层对应原则：`architecture_views/guidelines/principle-global-006-identity-over-address.md`（本 ADR 是其模块级展开）。
-- 序列号子索引 `params="1"` 的固件事实来源：`api.py:302-310` 注释、`docs/reference/protocol.md:82`。
+- 序列号子索引 `params="1"` 的固件事实来源：`api.py:302-310` 注释。

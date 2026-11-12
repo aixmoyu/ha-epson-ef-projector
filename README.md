@@ -3,6 +3,7 @@
 [![tests](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/tests.yml/badge.svg)](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/tests.yml)
 [![hassfest](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/hassfest.yml/badge.svg)](https://github.com/aixmoyu/ha-epson-ef-projector/actions/workflows/hassfest.yml)
 [![hacs](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=aixmoyu&repository=ha-epson-ef-projector&category=integration)
 [![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 爱普生 EF 系列投影仪没有 PJLink，没有 ESC/VP21，也没有可用的网页管理界面。它直接使用投影仪固件自带的一个 HTTP 控制接口，把这台设备完整接进了 Home Assistant。
@@ -42,7 +43,13 @@
 
 ## 安装
 
-### HACS（推荐）
+### Marketplace（Home Assistant 2026.11 及以后）
+
+从 2026.11 起，HACS 已被内置的 Marketplace 取代。点击上方徽章即可直接在你的 Home Assistant 中打开本仓库；也可以手动走到「设置 → Marketplace → 自定义存储库」，添加 `aixmoyu/ha-epson-ef-projector`，类别选「集成」。
+
+> 本仓库正在申请进入官方目录。进入目录之前，只能通过上述链接或自定义存储库安装；进入之后即可在 Marketplace 里直接搜索到。
+
+### HACS（2026.11 之前）
 
 在 HACS 中用「自定义存储库」添加 `https://github.com/aixmoyu/ha-epson-ef-projector`，类别选择「集成」，安装后重启 Home Assistant。
 

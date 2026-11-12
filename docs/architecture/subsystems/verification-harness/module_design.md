@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: "verification-harness 由三层构成：离线验证层（tests/，伪包注入 + AST 静态契约，64 用例 0.2s 跑完）、真机现场分析层（tools/，20 个 importlib 直载 api.py 的探测/验收脚本）、门禁执行层（单一 GitHub Actions workflow，2 条命令）。三层共享同一条设计前提——生产传输层 api.py 零 HA 依赖，因此可以在没有 Home Assistant 的机器上被完整验证；而所有 import HA 的装配与平台模块则完全落在验证之外。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块设计：验证与现场分析设施 (verification-harness)
@@ -286,7 +286,7 @@ flowchart LR
 
 ## 实测验证（本模块最重要的证据）
 
-> 环境：macOS + Python 3.13.13 + pytest 9.1.1 + aiohttp 3.14.5 + pyflakes 4.1.0 + ruff 0.15.15。全部命令在 `/Users/li/Projects/ha-epson-ef-projector` 下执行，`base_commit = 52928ed`。
+> 环境：macOS + Python 3.13.13 + pytest 9.1.1 + aiohttp 3.14.5 + pyflakes 4.1.0 + ruff 0.15.15。全部命令在 `/Users/li/Projects/ha-epson-ef-projector` 下执行，`base_commit = 2ac3d73`。
 
 ### 命令 × 真实输出 × 退出码
 

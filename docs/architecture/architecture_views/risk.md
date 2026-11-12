@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "全局风险登记：四类来源（稳定性/并发、性能、安全、运维与工程）合并自四张视图的探索结论。本项目最高危的两个事实是『写操作几乎无并发保护』与『单轮轮询可远超轮询间隔』——两者叠加在单线程 NanoHTTPD 固件上；其次是 raw_request 服务无白名单无 admin 校验的任意命令面，以及 CI 不安装 homeassistant 导致的装配层零覆盖。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 架构风险分析
@@ -96,7 +96,7 @@ base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
 | 测试结构 | 测试债 | `unittest.main()` 置于文件中部的类之间（`tests/test_api.py:507-508`、`tests/test_regressions.py:183-184`）→ 直跑只执行 42/64 与 7/9 | 严重 | 把 `unittest.main()` 移到文件末尾（或删除，统一用 discover/pytest） |
 | HA 运行时零覆盖 | 测试债 | CI 不安装 `homeassistant`（`.github/workflows/tests.yml:18`），7 个平台 + config_flow + services + diagnostics 的装配零自动化验证；历史已因此出过全实体不可用 | 严重 | 引入 `pytest-homeassistant-custom-component` 与最小 setup/实体装配冒烟测试 |
 | `tools/` 无门禁 | 测试债 | CI 的 ruff 范围不含 `tools/`（`.github/workflows/tests.yml:21`），本地 `ruff check .` 已全绿，但 CI 范围始终不含 `tools/` | 轻微 | 把 `tools/` 纳入 CI lint 范围 |
-| 发布工程 | 工程债 | 0 tag、0 remote、无 release workflow，版本号唯一载体是 `manifest.json:13`；漏改即 HACS 显示旧版 | 中等 | 加 tag/release workflow 与版本一致性校验 |
+| 发布工程 | 工程债 | 版本号唯一载体是 `manifest.json:18`，与 release tag 的一致性靠手工；无版本校验作业（2026-11-12 修订：tag/release `v0.0.1` 已存在，`hacs`/`hassfest` 工作流已加） | 中等 | 加 tag/release workflow 与版本一致性校验 |
 | 依赖声明 | 工程债 | `pytest` 未声明（无 requirements/CI 未装），但无 requirements 声明 pytest；`ruff` 无配置无版本锁 | 轻微 | 加 `requirements-dev.txt` 或 pyproject 的 optional-dependencies |
 | 文档漂移 | 文档债 | 协议结论分散在 `const.py` 注释与 `api.py` docstring 中，部分早期结论已被后续实测修正，历史版本仍可能被误引 | 中等 | 保持注释与代码同提交；已推翻的结论就地标注 |
 

@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-003
 description: "真机结论必须按『探测脚本 → 载荷断言 → 缺陷回归用例』三步固化，且每条断言都要保留设备型号、日期、实测值。测试脚本不得自己复刻生产算法（否则会造出与生产分叉的第二份事实），必须 import 生产实现或用生产常量。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 工程
 principle_scope: module
 ---

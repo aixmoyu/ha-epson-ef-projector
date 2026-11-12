@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-003
 
 description: "命令封装采用『语义方法 + 通用 request 透传』双轨：为已验证的命令提供具名方法（参数模板固化、返回类型化、失败语义明确），同时保留公开的 request() 作为未验证命令与服务透传的出口。代价是语义门面存在后门，且已产生 12 个零调用者方法。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 status: accepted
 

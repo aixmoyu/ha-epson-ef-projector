@@ -1,5 +1,5 @@
 # 模块: verification-harness —— 验证与现场分析设施（tests/ + tools/ + CI 门禁）
-# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 # project: "ha-epson-ef-projector"
 #
 # 本模块不是运行时域：它不参与 HA 集成加载，只在"开发者在场"时运行。

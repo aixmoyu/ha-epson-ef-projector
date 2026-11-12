@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-001
 description: const.py 的 4 张声明式表是跨文件契约：宽度必须与全部解包点严格一致，第一列后缀必须与 settings 键、unique_id 尾段、legacy 清理表三方对齐。任何宽度或后缀变更必须同时改全部消费点并由 AST 级静态测试守护，否则失败模式是「慢轮抛 ValueError → 全集成 unavailable」。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

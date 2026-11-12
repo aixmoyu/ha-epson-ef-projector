@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-001
 description: "协议传输层（api.py）必须保持零 Home Assistant 依赖：只用 aiohttp + stdlib，从而让协议编解码与错误分类能在没有 HA 运行时的环境里被离线单测与 tools/ 脚本直接复用。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: global
 ---

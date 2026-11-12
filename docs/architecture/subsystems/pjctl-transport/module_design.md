@@ -6,7 +6,7 @@ type: module-design
 
 description: "pjctl-transport 是一个刻意做成「可脱离 Home Assistant 单测」的传输层：单类 EpsonApi 承载认证子层（挑战解析 + nonce 缓存 + 摘要头合成）、传输子层（请求封装 + 四类异常映射）、命令子层（34 个语义方法，读→None / 写→上抛的不对称契约），以及对焦闭环算法。核心数据模型只有三个实例字段（session 所有权、认证三元组、nonce 计数）与一个跨调用延续的算法上下文（对焦目标与脉冲预算）。对外接口就是这 36 个公开协程方法，其中 `request()` 同时是内部隧道与对外逃生门。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 ---
 

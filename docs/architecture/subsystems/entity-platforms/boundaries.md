@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: entity-platforms 负责把 state-coordinator 产出的单一轮询快照投影成 58 个 Home Assistant 实体，并承载全部面向用户的写动作（电源/音量/媒体键/对焦/亮度/氛围灯/几何/按钮）。它不实现协议（不建连接、不算 Digest、不拼 size）、不装配轮询（不决定读什么、不决定慢轮次数）、不装配生命周期（不读 config entry、不注册平台、不做身份迁移），也不拥有 const.py 中声明式表的定义权（只消费）。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块边界

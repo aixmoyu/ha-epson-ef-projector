@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-004
 
 description: "HTTP 会话采用『构造可注入 + 懒创建 + 所有权标志』：外部可传入 ClientSession 以复用 HA 的连接池（单测则注入 fake）；未注入时首次请求懒建；close() 只关闭自己拥有的 session。该决策换来可测性与宿主复用，但留下三处生命周期缺口。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 status: accepted
 

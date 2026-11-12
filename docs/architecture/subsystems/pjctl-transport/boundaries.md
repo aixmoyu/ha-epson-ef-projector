@@ -6,7 +6,7 @@ type: boundaries
 
 description: "pjctl-transport 是整仓唯一的设备 I/O 边界：一个纯 aiohttp + stdlib 的异步客户端，负责 Digest-MD5 认证、`{id,size,params}` 请求封装、四类失败语义分类，以及 34 个固件命令的高层封装（含对焦闭环）。它只依赖 const.py 的协议契约常量，**不 import homeassistant**，因此可在无 HA 环境独立单元测试。它不负责轮询编排、实体投影、配置装配，也不决定参数的业务语义枚举。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 ---
 

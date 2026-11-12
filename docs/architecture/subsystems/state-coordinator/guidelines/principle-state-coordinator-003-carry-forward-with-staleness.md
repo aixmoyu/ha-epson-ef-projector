@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-003
 description: 读失败时跳过键而不是写 None，并在轮询末尾统一用上一轮值结转；同时必须让「陈旧」对下游可见（时间戳或 stale 标记）。这两件事是成对的——只做结转不做标记，等于用旧值伪装新值。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 全局功能树 — ha-epson-ef-projector
 # project: "ha-epson-ef-projector"
-# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 #
 # 本文件是 5 个模块 function_tree.yml 的**业务视角合并结果**：
 #   entry-core / pjctl-transport / state-coordinator / entity-platforms /
@@ -130,7 +130,7 @@
     - id: '1112'
       type: function_spec
       name: 请求-响应单次往返模型
-      description: 无长连接订阅、无推送、无回调；每次交互都是一次 POST 往返（`manifest.json:10` `local_polling`）。
+      description: 无长连接订阅、无推送、无回调；每次交互都是一次 POST 往返（`manifest.json:15` `local_polling`）。
   - id: '12'
     type: function
     name: 判定投影仪电源状态

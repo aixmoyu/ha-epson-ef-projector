@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-001
 description: "在没有 Home Assistant 的环境里验证生产代码时，用伪包注入（手工构造 ModuleType 并只设 __path__）绕开包的 __init__.py，而不是伪造/模拟 Home Assistant 本身。代价是 __init__.py 的装配逻辑零覆盖，因此必须显式承认这条边界，禁止把『测试全绿』当作『集成可用』。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 工程
 principle_scope: module
 ---

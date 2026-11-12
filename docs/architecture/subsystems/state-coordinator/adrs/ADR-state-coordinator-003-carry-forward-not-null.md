@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-003
 description: 读命令失败时不把键写成 None，而是跳过该键并在轮询末尾用上一轮值结转（carry-forward），共 6 条规则；同时为可陈旧的值提供时间戳或 stale 标记。代价是陈旧度无上界，且读 settings 的 13 个实体目前没有陈旧标记。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "读失败结转旧值而非置空"
 date: 2026-11-07

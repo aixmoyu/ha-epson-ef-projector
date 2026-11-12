@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: process-view
 description: "单一 HA 事件循环内三方协作：一个 DataUpdateCoordinator 定时轮询协程、7 个实体平台的嵌入式回调、以及被 HTTP 调用的固件 pjctl 服务（NanoHTTPD 单线程）。全部交互为 await 串行化的请求-响应，无消息总线；跨单元一致性靠「写后乐观改内存 + 慢速诊断轮询回读 + 无读通路项用 RestoreEntity/assumed_state」，全仓仅电源路径有一把 asyncio.Lock，其余写操作无并发保护。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 进程视图（跨单元运行时协作）

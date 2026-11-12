@@ -1,6 +1,6 @@
 # entity-platforms 模块功能树
 # project: ha-epson-ef-projector
-# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 # scope: custom_components/epson_ef/{media_player,sensor,select,binary_sensor,button,switch,number}.py
 # 说明: 叶子为 function(业务能力), 二级 directory 按平台类别组织; 类名/方法名不入树。
 

@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entry-core-002
 description: "设备身份必须写在 config entry 之外（HA Store），因为身份是物理事实而 entry 是用户配置；写 entry 会经 update listener 触发 reload。身份优先级为 serial → 已钉死的 host:port → 当前 host:port，且一旦落库不再随地址变化。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

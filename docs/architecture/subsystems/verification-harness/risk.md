@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "verification-harness 的风险全部集中在『保障本身的可靠性』上：门禁范围不含 tools/ 与 HA 装配层，测试结构缺陷让直跑少跑 11 个用例，pyflakes 缺失时静默降级，真机脚本已有 1 个必崩的 NameError 且退出码不表达结论。全局级风险见 architecture_views/risk.md，本文件只记录本模块 code_mapping 覆盖的故障域与边界依赖。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块架构风险分析

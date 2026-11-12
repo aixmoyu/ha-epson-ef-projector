@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: state-coordinator 负责把投影仪的无推送 HTTP 世界压缩成一份每轮重建的状态快照，并把「哪些设置可写、值域到哪里、按键码是什么」固化成声明式契约常量。它不实现协议（不建连接、不算 Digest、不拼 size）、不投影实体（不创建 Entity 类）、不装配生命周期（不读 config entry、不注册平台）。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块边界

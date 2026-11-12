@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: deployment-view
 description: "Home Assistant 自定义集成（HACS 分发；本仓库不含 Dockerfile/K8s/数据库等任何部署编排制品），以 Python 模块形式寄宿在用户的 HA 进程内；运行期经局域网明文 HTTP + Digest 认证访问单台 Epson EF 投影仪固件的 WebApiSrv(8080/pjctl)。拓扑为 单 HA 实例 → 单设备 的点对点形态，故障域集中在 HA 重启、投影仪 WebApiSrv 单线程挂起、局域网断连与 DHCP 地址漂移。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 部署视图（物理部署与拓扑）
@@ -76,7 +76,7 @@ graph TD
 | 制品/资源类型 | 位置 | 说明 |
 |-|-|-|
 | HACS 清单 | `hacs.json:1-5` | `homeassistant: 2024.4.0` 最低版本；`render_readme: true`；无 `zip_release`/`filename`（走仓库直装） |
-| 集成清单 | `custom_components/epson_ef/manifest.json:1-14` | `domain=epson_ef`、`config_flow=true`、`iot_class=local_polling`、`version=3.10.0`、`requirements: []`（依赖 HA 自带 aiohttp） |
+| 集成清单 | `custom_components/epson_ef/manifest.json:1-19` | `domain=epson_ef`、`config_flow=true`、`iot_class=local_polling`、`version=0.0.2`、`requirements: []`（依赖 HA 自带 aiohttp） |
 | 集成代码 | `custom_components/epson_ef/*.py`（14 个模块 / 3 055 行，`ls custom_components/epson_ef/*.py \| wc -l` 实测） | 全部逻辑；无第三方包、无二进制依赖 |
 | 前端资源 | `custom_components/epson_ef/icon.png`、`logo*.png` | 仅 HACS/UI 展示 |
 | 翻译 | `custom_components/epson_ef/strings.json`、`translations/{en,zh-Hans}.json` | 配置流与实体名称 |
@@ -134,7 +134,7 @@ graph LR
 | HA 集成 | 投影仪 | TCP 8080 `/api/pjctl` | HTTP 明文 + Digest MD5(qop=auth) | 唯一鉴权是**固件内置、全平台共用、不可轮换**的常量凭据（`custom_components/epson_ef/api.py:119-145`、`const.py:15-19`） |
 | 同网段任意主机 | 投影仪 | TCP 8080 | 同上 | 凭据在公开仓库中，等价于**无鉴权可达**；无 IP 白名单、无 TLS（`api.py:79`） |
 | 同网段任意主机 | 投影仪 | TCP 5555 (ADB) | ADB RSA 授权 | 若设备开启了网络调试，该通道可执行任意命令，风险高于 8080；建议用后关闭 |
-| 投影仪 | HA | 无 | 无推送/回调 | 只能由 HA 主动轮询；设备不反向连接（`manifest.json:10` `local_polling`） |
+| 投影仪 | HA | 无 | 无推送/回调 | 只能由 HA 主动轮询；设备不反向连接（`manifest.json:15` `local_polling`） |
 | HA 事件总线监听者 | `epson_ef_response` 事件 | HA 事件 | 订阅即得 | `raw_request` 把命令结果（含设备返回值）广播到事件总线，无权限过滤（`custom_components/epson_ef/services.py:67-70`） |
 
 ## 4. 入口路径与流量/事件调度

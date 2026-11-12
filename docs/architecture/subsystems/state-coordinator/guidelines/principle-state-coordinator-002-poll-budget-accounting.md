@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-002
 description: 新增任何轮询读命令前，必须先算清它落在快轮还是慢轮、待机时是否必然失败、以及它给稳态请求量增加多少。读命令只能进慢轮（除非电源态类信息），且必须放在 if state == "on" 块内，除非该值在待机态也可读。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

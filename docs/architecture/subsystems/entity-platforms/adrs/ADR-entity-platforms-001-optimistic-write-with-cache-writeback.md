@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-001
 description: "实体层采用『乐观写 + 回填 coordinator.data + 可选刷新』而非『写完等回读再上屏』或『纯事件驱动』。因为它对全部 55 个可写实体统一适用，把 UI 响应压到一帧内，并把与固件真值的收敛责任交给既有的慢诊断轮——代价是无读通路的 7 个实体退化为本地记忆，且缓存成为可写共享状态。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "以乐观写 + 缓存回填作为实体写路径的统一模式"
 date: 2026-11-07

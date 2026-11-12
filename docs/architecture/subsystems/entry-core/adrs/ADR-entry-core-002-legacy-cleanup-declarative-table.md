@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entry-core-002
 description: "为遗留实体清理选择『声明式后缀表 + 按条目遍历注册表』，而不是按 unique_id 反查或全局扫描。直接动因是一次真实事故：async_get_entity_id 参数传反导致清理静默失效、孤儿实体长期残留。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "用声明式清理表 + 条目内遍历清偿注册表孤儿"
 date: 2026-11-07

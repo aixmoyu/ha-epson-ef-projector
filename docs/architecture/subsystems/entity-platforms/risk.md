@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: entity-platforms 的风险集中在四处：①写通道分裂（40 个实体绕过 api.py 语义方法直接拼命令串），使同一份协议知识存在两份编码；②乐观写回填共享字典，无锁无版本，三通道增益与对焦闭环在并发下会丢更新/交错驱动；③无读通路的 7 个实体只靠本地记忆，静音甚至未声明 assumed_state，用户无法识别假设值；④unique_id 四套约定 + settings 扁平键 + legacy 清理表三者叠成的命名耦合，改名或迁移任一处都可能删掉活着的实体。跨模块级风险（固件单线程挂起、慢轮超时预算）见 architecture_views/risk.md，本文件仅在边界处引用。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块架构风险分析

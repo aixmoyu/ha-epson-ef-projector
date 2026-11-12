@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-001
 description: 实体层写动作必须经由 api.py 的语义方法，不得在平台文件里拼固件命令串。当前 40/55 个可写实体（button 30、switch 6、select 4）仍走 api.request(cmd, params) 裸接口，导致同一份协议知识存在两份编码：api.py 的语义方法与实体层的字符串字面量，二者会独立漂移。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

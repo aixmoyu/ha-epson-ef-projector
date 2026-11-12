@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-003
 description: "43/58 个实体（button 30、switch 6+3、select 4）采用『一个类 + 一张 const 元组表 + 一次推导』的表驱动装配，而非逐类/逐实体建模。理由是这些实体只在命令名、值域、图标、翻译键上不同，逐类建模会产生 43 个近乎相同的类；代价是元组宽度成为跨文件契约，且表驱动项无法承载个体差异行为。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "以 const 元组表驱动 43/58 个同构实体"
 date: 2026-11-07

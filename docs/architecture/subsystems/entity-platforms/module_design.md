@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: entity-platforms 是 7 个 HA 平台模块的集合，用 17 个实体类 + 4 张声明式元组表（3 张在 const.py、1 张在 button.py），把 coordinator 的单一字典投影成 58 个实体。它的内部结构不是分层，而是「五种状态读/写模态 × 两种写通道」的二维矩阵：读侧全部收敛到 coordinator.data（零 IO），写侧分裂为 api 语义方法（15 实体）与直接拼命令串（40 实体）两条路径。核心设计张力在于「固件能力参差」——有读通路的走乐观回写+刷新，无读通路的退化为本地记忆 + assumed_state。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块设计：entity-platforms（实体平台域）

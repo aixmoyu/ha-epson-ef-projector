@@ -1,8 +1,8 @@
 ---
 project: "ha-epson-ef-projector"
 type: development-view
-description: "Home Assistant 自定义集成（custom_components/epson_ef，domain=epson_ef，v3.10.0），纯 Python 源码分发、无构建步骤、无包管理清单，依赖全部由 HA 运行时提供；测试为手工注册脚本 + unittest discover 的 4 文件套件，CI 仅跑 ruff(F,E9) 与 unittest。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+description: "Home Assistant 自定义集成（custom_components/epson_ef，domain=epson_ef，v0.0.2），纯 Python 源码分发、无构建步骤、无包管理清单，依赖全部由 HA 运行时提供；测试为手工注册脚本 + unittest discover 的 4 文件套件，CI 仅跑 ruff(F,E9) 与 unittest。"
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 开发视图（源码结构与开发者视角）
@@ -41,11 +41,11 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | 验证脚本（非交付物） | `tools/` | 仓库内原地执行，无打包 | 开发者工作站侧临时进程 |
 | 单测套件（非交付物） | `tests/` | 无 | 无（CI 内进程） |
 
-**发布契约事实（manifest.json:13 行全文）**：`"version": "3.10.0"`；`"requirements": []`（`manifest.json:12`）；`"dependencies": []`（`manifest.json:8`）；`"iot_class": "local_polling"`（`manifest.json:10`）；`"config_flow": true`（`manifest.json:7`）。
+**发布契约事实（manifest.json:18 行全文）**：`"version": "0.0.2"`；`"requirements": []`（`manifest.json:17`）；`"dependencies": []`（`manifest.json:13`）；`"iot_class": "local_polling"`（`manifest.json:15`）；`"config_flow": true`（`manifest.json:12`）。
 **HACS 契约事实**：`"homeassistant": "2024.4.0"`（`hacs.json:3`）、`"render_readme": true`（`hacs.json:4`）。
 **HACS 安装机制**：仓库根即 HACS 自定义存储库，用户在 HACS「自定义存储库」填仓库 URL、类别选 Integration，HACS 把 `custom_components/epson_ef/` 落到 HA 配置目录后重启（`README.md:121-125`）；备选为 `rsync` 手动覆盖并重启容器（`README.md:131-135`）。**仓库内不存在任何构建脚本参与该过程**。
 
-> 事实补充（版本/发布形态）：`git for-each-ref` 仅返回 `refs/heads/main`，`git tag --list` 为空，`git remote -v` 为空，历史仅 3 个提交（`e4e4f25` → `dcafba5` → `52928ed`）。因此版本号唯一载体是 `custom_components/epson_ef/manifest.json:13`，代码内无第二处版本常量（全仓 `3.10.0` 仅出现在 manifest 与测试注释中）。
+> 事实补充（版本/发布形态）：**2026-11-12 修订** —— 此前记录的"0 tag、0 remote、无 release workflow"已不成立：当前有 `origin`（`github.com:aixmoyu/ha-epson-ef-projector`）、发布过的 tag/release `v0.0.1`，以及 `.github/workflows/{hacs,hassfest,tests}.yml` 三个工作流；历史不再是被重写后的 3 个提交。版本号仍是唯一载体 `custom_components/epson_ef/manifest.json:18`（当前 `0.0.2`，须与 release tag 一致），代码内无第二处版本常量（历史版本号 `3.10.0` 仅出现在 manifest 历史与测试注释中）。
 
 ## 2. 构建与依赖工具链
 
@@ -67,7 +67,7 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 
 | 依赖层面 | 管理机制 | 版本锁定 | 备注 |
 |-|-|-|-|
-| Python 运行时依赖 | **无清单**：`manifest.json:12` `requirements: []`、`:8` `dependencies: []`；仓库根无 requirements/pyproject/setup.py | 无锁 | 含义：集成不自带第三方包，全部依赖 HA 运行时已装的库 |
+| Python 运行时依赖 | **无清单**：`manifest.json:17` `requirements: []`、`:8` `dependencies: []`；仓库根无 requirements/pyproject/setup.py | 无锁 | 含义：集成不自带第三方包，全部依赖 HA 运行时已装的库 |
 | 第三方 import 实测面 | 生产代码仅两处：`import aiohttp`（`api.py:14`）、`import voluptuous as vol`（`config_flow.py:6`、`services.py:6`） | 跟随 HA | aiohttp 与 voluptuous 都是 HA core 自带依赖，故 `requirements: []` 自洽 |
 | 其余 import | 全为 stdlib：`asyncio/hashlib/logging/random/re`（`api.py:7-11`）、`datetime`（`coordinator.py:6`）、`typing`（各平台） | — | 证明"只依赖 HA 提供的包"成立 |
 | HA 侧 API 依赖 | `homeassistant.*` 仅在非 api 模块出现（`coordinator.py:9-11`、`__init__.py:6-11`），`api.py` 显式保持零 HA import（`api.py:1-3` 文档字符串声明 "no Home Assistant imports so it can be tested standalone"） | 由 `hacs.json:3` 的 2024.4.0 约束 | 注：2024.4.0 为声明值，CI 与本地测试均未覆盖该下界 |
@@ -175,8 +175,8 @@ graph LR
 |-|-|-|-|
 | 本地开发 | macOS + Python 3.13.13（实测）+ 手工 `pytest`/`ruff` | 无产物差异（源码即产物）；本地可能缺 `pyflakes`，导致 `tests/test_static.py` **静默 skip** | 仅靠开发者自觉跑 CI 同款两条命令；仓库无 pre-commit / 无 Makefile |
 | CI/CD | GitHub Actions `ubuntu-latest` + Python 3.13（`.github/workflows/tests.yml:9,15`）；`pip install aiohttp ruff pyflakes`（`:18`） | **不安装 homeassistant**（`:18`），故 CI 与本地"能跑通"都只证明非 HA 代码正确 | 门禁 = `ruff check custom_components tests --select F,E9`（`:21`）+ `unittest discover`（`:24`）；push 与 PR 均触发（`:3-5`） |
-| 产线构建 | **不适用** —— 无编译产物、无镜像、无签名；分发物就是 `custom_components/epson_ef/` 目录源码 | 无 | 版本号手工写在 `manifest.json:13`，无 tag/无 release workflow 兜底（仓库 0 tag、0 remote，`.github/workflows/` 仅 `tests.yml`） |
-| 用户部署 | HACS 自定义存储库 / 手动 rsync（`README.md:121-135`） | 与开发目录内容一致（同目录整包） | 版本一致性无自动化保障：HACS 依 `hacs.json:3` 判最低 HA 版本，HA 依 `manifest.json:13` 显示版本 |
+| 产线构建 | **不适用** —— 无编译产物、无镜像、无签名；分发物就是 `custom_components/epson_ef/` 目录源码 | 无 | 版本号手工写在 `manifest.json:18`；有 tag/release 但**无自动化兜底**：发版靠手工保证「manifest version == release tag」，`.github/workflows/` 只有 `hacs`/`hassfest`/`tests` 三个校验工作流，没有版本一致性校验（2026-11-12 修订） |
+| 用户部署 | HACS 自定义存储库 / 手动 rsync（`README.md:121-135`） | 与开发目录内容一致（同目录整包） | 版本一致性无自动化保障：HACS 依 `hacs.json:3` 判最低 HA 版本，HA 依 `manifest.json:18` 显示版本 |
 
 **关键一致性缺口（事实）**：CI 从不安装 `homeassistant`，而全部 7 个平台模块、`config_flow`、`services`、`diagnostics`、`__init__` 都 import HA（如 `__init__.py:6-11`、`number.py:8-16`）。因此 `manifest.json` 声明的 HA API 兼容性、实体装配、迁移逻辑在 CI 中**零覆盖**，只能靠真机回归（唯一验证方式是"整目录替换 + 重启 HA"）。
 
@@ -188,7 +188,7 @@ graph LR
 |-|-|-|
 | §1 工程结构 + 产物表 | 已填 | 目录树 + 实测 `ls`/`git ls-files`(86 文件)；产物表 3 行 |
 | §2.1 构建命令表 | 已填（含"不适用"明确化） | 构建命令不存在已用 `ls` 失败证据记录；测试/静态检查/产物校验四行全填 |
-| §2.2 依赖与版本管理 | 已填 | `manifest.json:12` + import 实测 + CI `:18` |
+| §2.2 依赖与版本管理 | 已填 | `manifest.json:17` + import 实测 + CI `:18` |
 | §3 测试拓扑 + 分层表 | 已填 | mermaid + 6 行表（含"E2E 不存在"）+ 5 条实测命令记录 |
 | §4 入手路径表 | 已填 | 9 步 + 对焦真实示例 7 步全链证据 |
 | §5 环境一致性表 | 已填 | 本地/CI/产线（明确不适用 + 原因）/用户部署 4 行 |
@@ -204,5 +204,5 @@ graph LR
 | D2 | 测试存在结构缺陷：`unittest.main()` 被放在文件中部的类之间，其后定义的类在直跑时被跳过 | `tests/test_api.py:507-508` 后紧跟 `FocusAbsoluteTests`（`:511`）、`ReadHelperTests`（`:569`）、`PowerStateTests`（`:595`）；`tests/test_regressions.py:183-184` 后紧跟 `UnreachableProjectorTests`（`:186`） | 实测 `python3 tests/test_api.py` 只跑 42/64、`python3 tests/test_regressions.py` 只跑 7/9；两个文件共 4 个类、11 个用例（9+2）仅在 `discover`/`pytest` 下才会执行，开发者直跑会误以为全绿 |
 | D3 | HA 运行时零自动化覆盖：CI 从不安装 `homeassistant`，却存在 7 个平台模块 + config_flow + services + diagnostics 全量 import HA | `.github/workflows/tests.yml:18`；`__init__.py:6-11`、`number.py:8-16`、`config_flow.py:7-10` | 装配错误（如 3.10.0 的 `WRITABLE_SELECTS` 解包宽度）只能在真机暴露，历史已发生过一次全实体不可用（见 `tests/test_const_contract.py:1-9`） |
 | D4 | `pytest` 未被声明为依赖，但 `tests/` 被写成 pytest 可发现形态；本地可用纯属环境自带 | 无 requirements/pyproject；`.github/workflows/tests.yml:18` 只装 `aiohttp ruff pyflakes`；实测本机 `pytest` 9.1.1 可跑 | 换机/换 CI 镜像即"命令不存在"，文档中 `pytest tests/` 的跑法不可移植 |
-| D5 | 版本/发布完全手工：0 tag、0 remote、无 release workflow，版本号仅 `manifest.json:13` 一处 | `git tag --list` 空、`git for-each-ref` 仅 `refs/heads/main`、`git remote -v` 空、`.github/workflows/` 仅 `tests.yml` | HACS 依 manifest version 判定更新，漏改即"装了新版但 HA 显示旧版" |
+| D5 | 版本/发布一致性无自动化校验：版本号仅 `manifest.json:18` 一处，tag 靠手工打 | 仓库已有 `.github/workflows/{hacs,hassfest,tests}.yml`，但无任何比对「manifest version ↔ release tag」的作业（2026-11-12 修订） | HACS 依 manifest version 判定更新，漏改即"装了新版但 HA 显示旧版" |
 | D6 | `ruff` 无配置锁定、无版本约束：CI `pip install ruff` 浮动，规则靠命令行 | `.github/workflows/tests.yml:18,21`；无 ruff 配置文件 | 上游默认规则集变化不会影响 CI（因 `--select` 固定），但本地 `ruff check .` 与 CI 语义不同，易产生"本地红 CI 绿"的认知错位（实测：本地 `ruff check .` rc=1，CI 同款 rc=0） |

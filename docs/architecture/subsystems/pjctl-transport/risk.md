@@ -6,7 +6,7 @@ type: risk
 
 description: "本模块范围（custom_components/epson_ef/api.py）的架构风险：传输层被绕过、34 个命令方法中 12 个在包内零调用者、对焦闭环的无锁与返回语义、认证状态的并发共享、session 生命周期缺口、等待语义非硬上限、明文 HTTP 与硬编码固件凭据。全局级风险见 architecture_views/risk.md，本文件只记录本模块 code_mapping 覆盖的故障域。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 ---
 

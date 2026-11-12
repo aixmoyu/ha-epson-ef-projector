@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-001
 description: "放弃 ADB 与 PJLink/ESC-VP21 路线，改用投影仪固件自带的 pjctl HTTP API（8080，Digest 认证）作为唯一控制通道；配置条目因此从 v1(ADB) 迁移到 v2(native)，且不再要求用户开启任何调试选项。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "选择固件原生 pjctl HTTP API 作为唯一控制通道"
 date: 2026-11-07
@@ -32,7 +32,7 @@ accepted（v2 起生效；v1 的 ADB 路径已无任何调用点，仅保留迁�
 
 - 用户侧零调试要求（不能假设 ADB 可用）。
 - 固件 OTA 后必须仍可用（WebApiSrv 随系统自启）。
-- 只用 HA 运行时已带的库（`manifest.json:12` `requirements: []`）。
+- 只用 HA 运行时已带的库（`manifest.json:17` `requirements: []`）。
 
 ## 2. 决策驱动因素
 

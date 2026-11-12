@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: state-coordinator 范围内的架构风险：故障域限定在 coordinator.py 的轮询编排与 const.py 的契约常量。核心风险面是「契约表宽度漂移导致全集成不可用」「慢轮时长超出轮询间隔造成积压」「待机期间状态整段冻结被误读」「乐观值被真值覆盖时机不透明」「死常量与硬编码造成双份事实」。跨模块级（单线程固件挂起、部署拓扑）见 architecture_views/risk.md，本文件不重复。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块架构风险分析

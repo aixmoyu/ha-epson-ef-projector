@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-002
 
 description: "电源状态判定采用『两级探针 + 单向异常重分类』：先用恒应答的 CONFIG_GET_PRODUCT_NAME 证活（失败→Unavailable，Timeout 升级为 Unavailable），再用仅唤醒态应答的 CONFIG_GET_LIGHT_TIME 判态（任何失败→off）。失败被分成四类异常，供上层分别决定重试/降级/上报。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 status: accepted
 

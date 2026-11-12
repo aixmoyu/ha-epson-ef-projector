@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-002
 description: "凡涉及固件行为的地方，以真机实测结论为准并把结论写进注释与常量；代码注释中反复出现的『Live-verified / 实测 / 第 N 轮确认』就是本项目的契约文档，任何现场分析推断都不得凌驾于实测之上。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 工程
 principle_scope: global
 ---

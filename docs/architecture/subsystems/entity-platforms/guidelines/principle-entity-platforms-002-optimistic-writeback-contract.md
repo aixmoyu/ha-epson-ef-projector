@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-002
 description: 实体写成功后，乐观值必须同时回填 coordinator.data 与实体本地属性，并（对有读通路的能力）紧接着 async_request_refresh()。只改 self._attr_* 会在下一帧被陈旧的 coordinator.data 覆盖回去；只回填缓存不刷新则要等下一个慢诊断轮（最坏 180s）才被固件真值确认。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

@@ -2,12 +2,12 @@
 project: "ha-epson-ef-projector"
 type: index
 description: "本目录是从代码事实反向恢复的代码知识库。全局层 5 视图 + 风险 + 6 原则 + 6 ADR + 全局功能树；模块层 5 个子系统 × 6 类产物。所有结论带 path/to/file:line 证据，frontmatter 均含 base_commit。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 项目知识库索引
 
-> **基线**：`base_commit = 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3`（HEAD，含 v3.10.0 工作树快照）。
+> **基线**：`base_commit = 2ac3d734d748f9a524f168520baf21307fc7b42c`（HEAD，2026-11-12 更新：manifest 加 `categories`、版本 0.0.2；仍待整库重跑流水线）。
 > **项目**：`ha-epson-ef-projector` — Home Assistant 自定义集成，通过 Epson EF/HB7x 投影仪固件自带的 pjctl HTTP API（8080，Digest 认证）做本地控制。生产代码 `custom_components/epson_ef/`（14 模块 / 3 055 行），58 个实体。
 > **证据纪律**：每条结论附 `path/to/file:line`；无法从代码确定者标 `[待确认]`；仓库根 `README.md` 不作事实来源（Doc Distrust）。
 > **目录约定**：`docs/` 下仅存本知识库。写入与更新规则见仓库根 [AGENTS.md](../../AGENTS.md) §3–§4。

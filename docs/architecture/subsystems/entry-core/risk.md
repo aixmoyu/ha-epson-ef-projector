@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "entry-core 模块内风险：装配失败路径的资源不归还与半装配残留、身份迁移只认当前地址导致的历史身份盲区与孤儿漏清、迁移对未知版本静默放行、服务装卸的 TOCTOU、Store 身份文件无生命周期、以及 setup 首轮必然触发全量慢诊断。全局级风险（身份双源 R-16、服务无 admin R-23、轮询积压 R-09、HA 零覆盖）见 architecture_views/risk.md，本文件不重复。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 id: entry-core
 ---
 

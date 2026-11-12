@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: "verification-harness 是本仓库的证据与门禁设施：tests/ 用伪包注入 + AST 静态解析在无 Home Assistant 的环境里锁定传输层协议与配置表结构契约，tools/ 用 importlib 直载生产 api.py 回落真实固件能力，.github/workflows/tests.yml 是唯一自动化门禁。它验证其余 4 个生产模块，自身不参与运行时加载，也不被生产代码反向依赖。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块边界

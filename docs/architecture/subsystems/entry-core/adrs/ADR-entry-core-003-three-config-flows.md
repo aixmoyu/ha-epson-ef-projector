@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entry-core-003
 description: "配置交互拆成三条职责单一的流：user（新增，写 data + unique_id）、reconfigure（只改连接信息）、options（只改轮询间隔）。地址变更必须走 reconfigure 而非重新添加，因为只有 reconfigure 能保留条目与实体历史。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "三流分治：新增 / 重配置 / 选项各管一件事"
 date: 2026-11-01

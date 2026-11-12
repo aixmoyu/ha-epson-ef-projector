@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entry-core-004
 description: "服务结果通过 epson_ef_response 事件回传，而不是让服务抛错或返回数据——因为 HA 服务调用没有返回通道。代价是错误被软化为事件载荷、无 correlation id、且错误分类丢失。raw_request 也因此成为无白名单、无 admin 门禁的任意命令面。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "raw_request 以事件回传结果，异常折为错误载荷"
 date: 2026-11-01

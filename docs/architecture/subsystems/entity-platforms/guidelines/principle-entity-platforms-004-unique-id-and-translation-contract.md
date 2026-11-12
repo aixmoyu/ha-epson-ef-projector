@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-004
 description: unique_id 必须落在四套既有约定之内（平台前缀式 / setting 式 / 裸后缀式 / 直接使用 base_id），且 setting 式后缀同时是 coordinator settings 的键、strings.json 的翻译键、legacy 清理表的匹配段。新增或改名实体时必须四处同步，并由测试守护"当前实体集与 legacy 表不相交"。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 工程
 principle_scope: module
 ---

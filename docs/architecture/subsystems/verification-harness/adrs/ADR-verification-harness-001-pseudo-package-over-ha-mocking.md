@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-001
 description: "在无 Home Assistant 的 CI 环境中验证生产代码，最终选择『伪包注入（只设 __path__ 的 ModuleType）+ AST 静态解析』，明确拒绝 mock HA 与安装 HA 两条路线。代价是 __init__.py 与 7 个平台模块零覆盖，收益是 64 用例 0.2s 跑完且不引入任何测试框架依赖。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "用伪包隔离代替 mock/安装 Home Assistant"
 date: 2026-11-01

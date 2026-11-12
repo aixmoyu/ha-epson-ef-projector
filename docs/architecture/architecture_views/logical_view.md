@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: logical-view
 description: "Home Assistant 自定义集成的逻辑分层：入口装配层(__init__/config_flow/diagnostics)把固件 pjctl HTTP 客户端(传输层 api.py)注入单一 DataUpdateCoordinator(状态编排层)，再由 7 个实体平台把共享的 coordinator.data 字典投影成 58 个实体；const.py 作为纯声明契约层被所有层依赖，services.py 提供绕过实体的动作入口。本项目不存在 DDD 四层与限界上下文，实际边界是 HA 集成的六层与按固件能力划分的 7 个功能域。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 逻辑视图

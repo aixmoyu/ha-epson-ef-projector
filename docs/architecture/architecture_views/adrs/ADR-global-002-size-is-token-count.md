@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-002
 description: "pjctl 请求体的 size 字段定义为 params 的空格分词数（token count），而非字节长度；该定义被固化为 request() 内的唯一计算点，是打通所有 CONFIG_SET_* 写通路的根因。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "size 字段语义定为 params 的分词数（token count）"
 date: 2026-11-07

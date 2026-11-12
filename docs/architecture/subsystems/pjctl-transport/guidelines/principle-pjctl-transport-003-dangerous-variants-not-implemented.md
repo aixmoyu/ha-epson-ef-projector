@@ -8,7 +8,7 @@ id: principle-pjctl-transport-003-dangerous-variants-not-implemented
 
 description: "命令族里存在会关机、清用户配置或进入工厂态的参数变体时，传输层用『不实现』而非『运行时校验』来屏蔽：不提供能产生该参数的方法，并在 docstring 写明为什么。代价是 `request()` 公开后仍可绕过，因此这是有边界的约定而非强制机制。"
 
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 principle_scope: module
 

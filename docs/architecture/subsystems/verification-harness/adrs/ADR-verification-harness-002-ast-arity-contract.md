@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-002
 description: "配置表的结构契约选择『AST 静态解析 + 双向宽度比对』，而不是运行时断言、类型系统约束或纯人工 review。契约锚定到文件级消费位置而非行号，并要求表必须有消费者以防死代码。这条决策直接来自 3.10.0 的全实体 unavailable 事故。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "用 AST 双向宽度比对锁定表-消费者契约"
 date: 2026-11-01

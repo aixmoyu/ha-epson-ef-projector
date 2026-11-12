@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-004
 description: "对固件没有读通路的能力（氛围灯、自动对比度、测试图案、静音）采用『乐观写入 + RestoreEntity 本地记忆 + assumed_state=True』三件套，而不是隐藏实体或伪造读值。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "无读通路能力采用乐观状态 + assumed_state 显式标注"
 date: 2026-11-07

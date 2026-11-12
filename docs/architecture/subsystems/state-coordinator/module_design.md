@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: state-coordinator 由「轮询编排」与「契约常量声明」两个子域组成：前者用快/慢双速把 2–35 条 HTTP 请求压进一个纯标量快照，并在读失败时结转旧值；后者用 4 张定宽元组表与 6 组值域常量，把固件契约从代码里剥离成可被多平台共同解包的数据。两者共同构成全集成唯一的状态上游。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ---
 
 # 模块设计：state-coordinator（状态协调域）
@@ -448,7 +448,7 @@ sequenceDiagram
 
 ### 洞察
 
-- [x] **快轮只有 2 条 HTTP，慢轮 35 条，比值 17.5:1**。任何「让某实体每轮都新」的需求都必须先算清它对固件的增量——第 3 条/轮的持续请求在单线程固件上已属可观（`manifest.json:10` `iot_class=local_polling`）。
+- [x] **快轮只有 2 条 HTTP，慢轮 35 条，比值 17.5:1**。任何「让某实体每轮都新」的需求都必须先算清它对固件的增量——第 3 条/轮的持续请求在单线程固件上已属可观（`manifest.json:15` `iot_class=local_polling`）。
 - [x] **待机短路是本模块最大的单点优化**：一行 `if state == "on":`（`:61`）把块内 32 条必失败请求降为 0。
 - [x] **carry-forward 让「陈旧」变成可表达的信息**，而不是靠置空隐藏（`:134-153` + `sensor.py:75-77`）。
 - [x] **契约表的宽度是跨文件契约**，且失败模式是「全集成 unavailable」——因此必须有 AST 级护栏（`tests/test_const_contract.py`）。

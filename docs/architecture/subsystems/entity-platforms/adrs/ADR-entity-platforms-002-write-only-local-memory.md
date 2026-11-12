@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-002
 description: "无读通路的 7 个实体选择『RestoreEntity 本地记忆 + assumed_state 显式声明』而不是隐藏实体、也不是伪造真值。理由是这些能力客观上只能写不能读（GET 全 FAIL 有实测记录），隐藏会剥夺可用的控制能力，伪造则破坏信任。代价是状态随实体遥控器使用而永久漂移，且用户只能靠 assumed_state 徽标识别。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "写-only 能力以本地记忆 + assumed_state 暴露，不隐藏也不伪造"
 date: 2026-11-07

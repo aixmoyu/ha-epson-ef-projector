@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: "entry-core 是 HA 进程内集成的入口装配层：把一条 config entry 变成 api + coordinator + base_id 的共享运行时并发布到 hass.data，同时负责身份解析/注册表迁移/遗留实体清理、三条配置流、两个 domain 级服务与诊断导出。它不解析 pjctl 协议、不决定轮询读什么、不构造实体状态。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 id: entry-core
 ---
 
@@ -17,7 +17,7 @@ id: entry-core
 |核心职责|setup/unload 编排、`hass.data` 运行时发布、身份解析与持久化、注册表身份迁移、遗留实体清理、v1→v2 条目迁移、user/reconfigure/options 三条配置流、`send_key`/`raw_request` 服务、诊断包导出（`custom_components/epson_ef/__init__.py:166-221`、`config_flow.py:23-132`、`services.py:38-102`、`diagnostics.py:12-39`）|pjctl 命令编解码与 Digest 认证（pjctl-transport：`api.py`）、轮询节奏与状态快照装配（state-coordinator：`coordinator.py`）、实体投影与可用性判定（entity-platforms：7 个平台模块）、测试与探测脚本（verification-harness：`tests/`、`tools/`）|
 |数据所有权|`hass.data["epson_ef"][entry_id]` 五键运行时字典（`__init__.py:195-201`）；HA Store `.storage/epson_ef.<entry_id>.identity` 的 `serial`/`identity` 两键（`:53-55`）；config entry 的 data/options 形状与 version（`config_flow.py:56-66`、`__init__.py:31-39`）|`coordinator.data` 快照内容（state-coordinator）；实体 `unique_id` 的**后缀语义**（entity-platforms 定义，本模块只做前缀替换 `__init__.py:88-94`）；`KEYCODES`/`WRITABLE_*` 常量表（const.py 属共享契约层）|
 |业务规则|身份优先级 serial → 钉死 host:port（`:58-76`）；迁移幂等（`:83-84`）；服务最终一致地随条目计数装卸（`:218-220`、`services.py:40-41`）；选项覆盖 data（`:184-187`）；「能取到 product name 才算连得上」（`config_flow.py:40-54`）|协议层的 `size`=token 数规则（`api.py:163-172`）；"待机时哪些命令会 FAIL"（`api.py:221-276`）；实体状态机与乐观写（entity-platforms）|
-|不拥有的横切能力|—|日志格式化、HA 版本兼容策略、发布版本号（`manifest.json:13`）|
+|不拥有的横切能力|—|日志格式化、HA 版本兼容策略、发布版本号（`manifest.json:18`）|
 
 ## 上下游总览
 

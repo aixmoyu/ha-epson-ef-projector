@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-004
 description: 慢轮整段包在 if state == "on" 内，待机时跳过块内全部 32 条引擎查询，仅保留块外的 1 条 standby_mode。这依赖一个隐含事实——待机态引擎查询必然失败——因此任何新增读命令都必须先判定其待机可读性。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "待机时整段跳过引擎查询，standby_mode 单独豁免"
 date: 2026-11-07

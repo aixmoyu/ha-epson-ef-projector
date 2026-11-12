@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-005
 description: available 只能表达"该实体的数据源当前是否可信"，不能用 coordinator.last_update_success 冒充"设备是否唤醒"。待机时 HTTP 仍可达、last_update_success 为 True，因此照抄基类语义的 7 处覆写对"仅唤醒可读"的读数（对焦/亮度/增益）不做任何屏蔽；并且只有 connectivity 与 button 两处"恒 True"是有意例外，必须保留注释说明理由。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

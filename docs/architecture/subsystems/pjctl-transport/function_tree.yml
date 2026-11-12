@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 模块功能树 — pjctl-transport
 # project: "ha-epson-ef-projector"
-# base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 # 说明: 节点名为「业务能力」，不含 EpsonApi/request/probe_state/goto_focus 等代码名。
 #       证据一律相对仓库根。校验: scripts/validate-function-tree.mjs
 # ════════════════════════════════════════════════════════════════════════════

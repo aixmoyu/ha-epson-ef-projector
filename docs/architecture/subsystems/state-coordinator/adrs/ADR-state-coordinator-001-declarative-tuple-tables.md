@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-001
 description: 用「表 + 通用实体类」承载 10 个可写设置，而不是为每个设置写一个实体类。表是纯数据和定宽元组，一处声明、四处解包（实体创建 ×2、轮询回读 ×2），代价是宽度成为跨文件契约，必须配 AST 级静态护栏。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "声明式元组表驱动可写设置，而非逐实体类"
 date: 2026-11-07

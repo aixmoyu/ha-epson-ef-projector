@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-005
 description: "所有实体状态只有一个上游来源——Ef50Coordinator 的 data 字典；实体不得各自发起读请求。读失败时不得把键写成 None，而应省略该键并在轮询末尾用上一轮值结转（carry-forward），配合 stale 标记暴露陈旧性。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: global
 ---

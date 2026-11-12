@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entry-core-001
 description: "装配与迁移必须靠『读取当前状态再决定』实现幂等，而不是引入迁移标记位。setup 会被 HA 在重启、reload、退避重试、多 entry 场景下重复调用；版本门禁（entry.version==1）、身份短路（old_id==new_id）、服务短路（has_service）三者共同保证重复执行为空操作。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 架构
 principle_scope: module
 ---

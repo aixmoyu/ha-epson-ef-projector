@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-004
 description: "电源动作采用『动作前探测 → 盲发一次 toggle → 乐观置态 → 最多 10s 确认 → 未确认回落刷新』的三段式，并用每实例 asyncio.Lock 串行化。理由是在只有 toggle 键的固件上，幂等必须实现在动作前；而锁的作用域选择每实例而非每设备，是一次有意识的取舍（避免跨 entry 死锁，代价是 services 与按钮可绕过）。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "电源动作探测-发键-确认三段式 + 每实例锁"
 date: 2026-11-07

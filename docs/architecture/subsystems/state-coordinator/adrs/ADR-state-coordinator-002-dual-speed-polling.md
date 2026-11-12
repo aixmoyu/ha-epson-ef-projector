@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-002
 description: 采用单一 DataUpdateCoordinator 的快/慢双速轮询：每轮只 2 条 HTTP 探电源态，每 12 轮才追加 33 条只读命令（32 条在待机短路段内 + 1 条 standby_mode），稳态平均约 4.75 条/轮。代价是慢值最大陈旧 180s、慢轮峰值 35 条可能超出轮询间隔。
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 status: accepted
 title: "单一轮询源 + 快/慢双速节流"
 date: 2026-11-07
@@ -23,7 +23,7 @@ accepted
 
 **业务背景**：58 个实体需要持续反映设备状态（电源、灯时、17 项诊断、10 项可写设置当前值），而用户对电源状态变化的感知延迟要求最高——`config_flow.py:63` 允许轮询间隔低至 5s，默认 15s（`const.py:11`）。
 
-**技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（`API_PATH`，`const.py:14`），且固件是单线程 HTTP 服务——生产代码注释自承「some commands hang the HTTP thread」（`api.py:340-346`）。设备无推送能力（`manifest.json:10` 的 `"iot_class": "local_polling"`）。集成侧的唯一调度入口是 HA 的 `DataUpdateCoordinator`（`coordinator.py:19`, `:28-33`）。
+**技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（`API_PATH`，`const.py:14`），且固件是单线程 HTTP 服务——生产代码注释自承「some commands hang the HTTP thread」（`api.py:340-346`）。设备无推送能力（`manifest.json:15` 的 `"iot_class": "local_polling"`）。集成侧的唯一调度入口是 HA 的 `DataUpdateCoordinator`（`coordinator.py:19`, `:28-33`）。
 
 **核心问题**：在「每轮都想知道电源态」与「固件承受不了 40 条只读命令 × 每 15s」之间，如何取一个可持续的平衡点？
 
@@ -48,7 +48,7 @@ accepted
 |**Option A：单协调器 + 快/慢双速**（选中）|每轮 probe（2 条），每 12 轮追加 33 条只读|请求量恒定 2/轮（稳态 4.75）；电源态及时；实体共享一份数据|慢值最大陈旧 12×interval；慢轮峰值 35 条可能超间隔|慢轮积压导致快轮饿死（R-SC-02）|
 |Option B：每实体独立轮询|每个 `CoordinatorEntity` 各取所需|无陈旧问题|请求数 = 58 × 各自频率，对单线程固件是灾难|极高|
 |Option C：单一协调器每轮全量读|每轮 35 条，不分快慢|无陈旧|15s 间隔即 2.3 req/s 持续打固件；且每次慢轮都可能撞上挂起|高|
-|Option D：事件驱动（设备推送）|最理想，零轮询|零请求|固件无推送/回调通道，`manifest.json:10` 明确 `local_polling`|不可行|
+|Option D：事件驱动（设备推送）|最理想，零轮询|零请求|固件无推送/回调通道，`manifest.json:15` 明确 `local_polling`|不可行|
 |Option E：混合（快轮 probe + 独立慢协调器）|两个 coordinator 各自节奏|慢轮不阻塞快轮|引入第二个轮询源，两个 coordinator 会并发打同一设备（更糟）；且两份 `data` 需合并|高|
 
 ### Option A：单协调器 + 快/慢双速（选中）

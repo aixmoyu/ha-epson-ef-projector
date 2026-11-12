@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-002
 description: "凡是『导入即拉入 Home Assistant』或『只在特定运行时分支才抛错』的耦合，一律用 ast 静态解析去断言，而不是 import 后跑一遍。契约必须双向（定义侧宽度 ↔ 全部消费侧宽度）、必须覆盖两种语法形态（for 语句与推导式）、必须锚定消费位置。"
-base_commit: 52928ed9d1ac925ad7d87f47a0dd1af9a24fb3a3
+base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 principle_category: 工程
 principle_scope: module
 ---

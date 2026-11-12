@@ -1,6 +1,9 @@
 {
   "domain": "epson_ef",
   "name": "Epson EF Projector",
+  "categories": [
+    "media_entertainment"
+  ],
   "codeowners": [
     "@aixmoyu"
   ],
@@ -10,5 +13,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/aixmoyu/ha-epson-ef-projector/issues",
   "requirements": [],
-  "version": "0.0.1"
+  "version": "0.0.2"
 }

@@ -18,8 +18,6 @@ from .const import (
     DEFAULT_NAME,
     DOMAIN,
     WRITABLE_SELECTS,
-    standby_option_to_raw,
-    standby_raw_to_option,
 )
 from .coordinator import Ef50Coordinator
 
@@ -30,9 +28,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     data = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [Ef50StandbyModeSelect(entry, data["coordinator"], data["base_id"])]
-    )
     async_add_entities(
         [
             Ef50ConfigSelect(entry, data["coordinator"], data["base_id"],
@@ -110,57 +105,6 @@ class Ef50ConfigSelect(CoordinatorEntity[Ef50Coordinator], SelectEntity):
         settings = (self.coordinator.data or {}).setdefault("settings", {})
         settings[self._suffix] = raw
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
-
-
-class Ef50StandbyModeSelect(CoordinatorEntity[Ef50Coordinator], SelectEntity):
-    """启动模式:节能 / 快速启动 (CONFIG_SET_PJ_STANDBY_MODE)."""
-
-    _attr_has_entity_name = True
-    _attr_translation_key = "standby_mode"
-    _attr_icon = "mdi:projector"
-    _attr_options = ["节能", "快速启动"]
-
-    def __init__(
-        self, entry: ConfigEntry, coordinator: Ef50Coordinator, base_id: str
-    ) -> None:
-        super().__init__(coordinator)
-        self._entry = entry
-        self._base_id = base_id
-        self._attr_unique_id = f"{base_id}-standby_mode"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, base_id)},
-            name=entry.data.get("name", DEFAULT_NAME),
-            manufacturer="EPSON",
-            model=(coordinator.data or {}).get("product") or "Epson EF Projector",
-        )
-
-    @property
-    def available(self) -> bool:
-        return self.coordinator.last_update_success
-
-    @property
-    def current_option(self) -> str | None:
-        raw = (self.coordinator.data or {}).get("standby_mode")
-        return standby_raw_to_option(raw)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        raw = (self.coordinator.data or {}).get("standby_mode")
-        return {"raw_value": raw}
-
-    async def async_select_option(self, option: str) -> None:
-        raw = standby_option_to_raw(option)
-        if raw is None:
-            raise HomeAssistantError(f"未知的启动模式选项: {option}")
-        try:
-            await self.coordinator.api.set_standby_mode(raw)
-        except EpsonApiError as err:
-            raise HomeAssistantError(f"设置启动模式失败: {err}") from err
-        # Optimistically reflect the new value, then let the coordinator confirm.
-        if self.coordinator.data is not None:
-            self.coordinator.data["standby_mode"] = raw
-            self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
 

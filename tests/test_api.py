@@ -279,23 +279,6 @@ class PayloadTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await api.get_serial_number(), "SNO12345")
 
 
-class StandbyModeMappingTests(unittest.TestCase):
-    def test_option_to_raw(self):
-        from epson_ef.const import standby_option_to_raw
-
-        self.assertEqual(standby_option_to_raw("节能"), "0")
-        self.assertEqual(standby_option_to_raw("快速启动"), "1")
-        self.assertIsNone(standby_option_to_raw("未知"))
-
-    def test_raw_to_option(self):
-        from epson_ef.const import standby_raw_to_option
-
-        self.assertEqual(standby_raw_to_option("0"), "节能")
-        self.assertEqual(standby_raw_to_option("1"), "快速启动")
-        self.assertIsNone(standby_raw_to_option(None))
-        self.assertIsNone(standby_raw_to_option("9"))
-
-
 class Round4Tests(unittest.IsolatedAsyncioTestCase):
     """刷新定时器 + 手动对焦(真机回环验证)。"""
 
@@ -502,10 +485,6 @@ class Round6Tests(unittest.IsolatedAsyncioTestCase):
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class FocusAbsoluteTests(unittest.IsolatedAsyncioTestCase):
     """`goto_focus` / `focus_move_*`:真机回环验证的通路。
 
@@ -609,3 +588,7 @@ class PowerStateTests(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(api, "probe_state", side_effect=fake_probe):
             self.assertTrue(await api.wait_for_state("on", timeout_s=1))
+
+
+if __name__ == "__main__":
+    unittest.main()

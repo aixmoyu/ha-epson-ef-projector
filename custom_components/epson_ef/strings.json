@@ -67,12 +67,6 @@
       }
     },
     "select": {
-      "standby_mode": {
-        "name": "启动模式"
-      },
-      "color_temp": {
-        "name": "色温"
-      },
       "dynamic_contrast": {
         "name": "动态对比度"
       },
@@ -101,14 +95,8 @@
       "menu": {
         "name": "菜单"
       },
-      "input_source": {
-        "name": "信号源(实验)"
-      },
       "auto_focus": {
         "name": "自动对焦"
-      },
-      "patternless_auto_focus": {
-        "name": "无图案自动对焦(实验)"
       },
       "floating_settings": {
         "name": "浮窗设置"
@@ -121,9 +109,6 @@
       },
       "manual_shift": {
         "name": "画面位移"
-      },
-      "manual_zoom": {
-        "name": "画面缩放(实验)"
       },
       "panel_alignment": {
         "name": "面板对齐"
@@ -139,21 +124,6 @@
       },
       "wall_color_fit": {
         "name": "一键墙面颜色自适应"
-      },
-      "camera_calibration": {
-        "name": "相机标定(实验)"
-      },
-      "depth_gsensor_calibration": {
-        "name": "重力传感器标定(实验)"
-      },
-      "framefit": {
-        "name": "画面适配(实验)"
-      },
-      "generate_camera_pattern": {
-        "name": "生成标定图案(实验)"
-      },
-      "smart_eye_protect_run": {
-        "name": "智能护眼触发(实验)"
       },
       "auto_correction_run": {
         "name": "自动校正触发"

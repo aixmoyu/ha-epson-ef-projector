@@ -180,8 +180,148 @@ class CoordinatorContractTests(unittest.TestCase):
         self.assertIn("WRITABLE_SELECTS", source)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class RemovedUnverifiedEntityTests(unittest.TestCase):
+    """未被真机验证的写通路不得以实体形式暴露。
+
+    HACS 评审要求:效果(或副作用)未在设备上确认的命令不能提供可点按钮,
+    尤其是会改写用户标定状态的相机标定/重力传感器标定。这些命令一旦被
+    重新加回表里,本测试必须同步且必须在标题里写明验证依据。
+    """
+
+    REMOVED_BUTTONS = (
+        "input_source",
+        "patternless_auto_focus",
+        "manual_zoom",
+        "camera_calibration",
+        "depth_gsensor_calibration",
+        "framefit",
+        "generate_camera_pattern",
+        "smart_eye_protect_run",
+    )
+
+    def _button_suffixes(self) -> set[str]:
+        """用 AST 取表的第一列,不 import button.py(它依赖 homeassistant)。"""
+        tree = ast.parse((_PKG_DIR / "button.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.AnnAssign)
+                and getattr(node.target, "id", None) == "BUTTON_DEFS"
+                and isinstance(node.value, (ast.Tuple, ast.List))
+            ):
+                return {ast.literal_eval(row.elts[0]) for row in node.value.elts}
+        self.fail("BUTTON_DEFS not found in button.py")
+
+    def test_unverified_buttons_are_not_exposed(self):
+        suffixes = self._button_suffixes()
+        for suffix in self.REMOVED_BUTTONS:
+            self.assertNotIn(
+                suffix, suffixes,
+                f"{suffix} 的效果未在真机确认,不能作为按钮暴露",
+            )
+
+    def test_verified_buttons_are_kept(self):
+        # 防止"删干净"式回退:真机验证过的按钮必须保留
+        suffixes = self._button_suffixes()
+        for suffix in ("home", "back", "menu", "auto_focus", "zoom_in",
+                       "shift_left", "geometry_reset"):
+            self.assertIn(suffix, suffixes)
+
+    def test_color_temp_write_path_is_not_exposed(self):
+        from epson_ef.const import WRITABLE_SELECTS
+
+        self.assertNotIn("color_temp", {row[0] for row in WRITABLE_SELECTS})
+        # 读通路仍在:它是只读诊断值,不是写实体
+        source = (_PKG_DIR / "coordinator.py").read_text(encoding="utf-8")
+        self.assertIn("CONFIG_GET_COLOR_TEMP", source)
+
+    def test_standby_mode_has_no_unverified_labels(self):
+        from epson_ef import const
+
+        self.assertFalse(
+            hasattr(const, "STANDBY_MODE_OPTIONS"),
+            "0/1 → 节能/快速启动 的映射未逐台核对,不得以带标签的实体暴露",
+        )
+        self.assertFalse(hasattr(const, "standby_option_to_raw"))
+        self.assertFalse(hasattr(const, "standby_raw_to_option"))
+
+
+class DiagnosticsRedactionTests(unittest.TestCase):
+    """诊断包必须脱敏 host 与序列号(序列号同时是 base_id)。
+
+    测试环境不装 homeassistant,只能校验源码确实调用了 async_redact_data
+    且脱敏键覆盖 host/base_id/serial。
+    """
+
+    def test_diagnostics_uses_async_redact_data(self):
+        source = (_PKG_DIR / "diagnostics.py").read_text(encoding="utf-8")
+        self.assertIn("async_redact_data", source)
+        self.assertIn("TO_REDACT", source)
+
+    def test_redacted_keys_cover_host_and_serial(self):
+        tree = ast.parse((_PKG_DIR / "diagnostics.py").read_text(encoding="utf-8"))
+        keys: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+                continue
+            targets = (
+                node.targets if isinstance(node, ast.Assign) else [node.target]
+            )
+            if not any(
+                getattr(t, "id", None) == "TO_REDACT" for t in targets
+            ):
+                continue
+            for elt in node.value.elts:
+                # 值可能是字面量 "base_id" 或常量名 CONF_HOST
+                if isinstance(elt, ast.Constant):
+                    keys.add(elt.value)
+                elif isinstance(elt, ast.Name):
+                    keys.add(elt.id)
+        # host 用常量名 CONF_HOST 表达;序列号与 identity 键用字面量
+        self.assertTrue(
+            {"host", "CONF_HOST"} & keys,
+            f"TO_REDACT 必须包含 host,实际为 {sorted(keys)}",
+        )
+        self.assertIn("base_id", keys)
+        self.assertIn("serial", keys)
+
+    def test_redaction_is_applied_to_every_section(self):
+        tree = ast.parse((_PKG_DIR / "diagnostics.py").read_text(encoding="utf-8"))
+        calls = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and getattr(node.func, "id", None) == "async_redact_data"
+        ]
+        # entry / identity / coordinator.data / api 四段
+        self.assertGreaterEqual(len(calls), 4)
+
+
+class LegacyCleanupCoverageTests(unittest.TestCase):
+    """本版移除的实体必须登记进 legacy 清理表,否则升级用户留孤儿。"""
+
+    def _legacy_map(self) -> dict[str, tuple[str, ...]]:
+        tree = ast.parse((_PKG_DIR / "__init__.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                if node.target.id == "legacy":
+                    return ast.literal_eval(node.value)
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id == "legacy":
+                        return ast.literal_eval(node.value)
+        self.fail("legacy cleanup table not found in __init__.py")
+
+    def test_removed_buttons_are_cleaned_up(self):
+        legacy = self._legacy_map()
+        for suffix in RemovedUnverifiedEntityTests.REMOVED_BUTTONS:
+            self.assertIn(f"button-{suffix}", legacy.get("button", ()))
+        self.assertIn("button-engine_refresh", legacy.get("button", ()))
+
+    def test_removed_selects_are_cleaned_up(self):
+        legacy = self._legacy_map()
+        self.assertIn("setting-color_temp", legacy.get("select", ()))
+        self.assertIn("standby_mode", legacy.get("select", ()))
+
 
 class UnreachableProjectorTests(unittest.IsolatedAsyncioTestCase):
     """不可达的投影仪必须报 EpsonApiUnavailable,而不是 EpsonApiTimeout。
@@ -217,3 +357,7 @@ class UnreachableProjectorTests(unittest.IsolatedAsyncioTestCase):
             state, _light = await api.probe_state()
         await api.close()
         self.assertEqual(state, "off")
+
+
+if __name__ == "__main__":
+    unittest.main()

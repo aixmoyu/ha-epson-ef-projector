@@ -14,15 +14,20 @@ from .const import DEFAULT_NAME, DOMAIN, QC_SHIFT_STEP, QC_ZOOM_STEP
 from .coordinator import Ef50Coordinator
 
 # (后缀, 翻译键, 图标, 命令 ID, params)
+#
+# 未列入本表的命令及其原因(真机验证前不暴露,禁止凭命名推测加回):
+#   - NOTIFY_KEYEVENT "243" (KEYCODE_TV_INPUT_HDMI_1): 实验性,固件可能忽略。
+#   - NOTIFY_PATTERNLESS_AUTO_FOCUS: 无图案自动对焦,效果未在真机确认。
+#   - NOTIFY_APP_MANUAL_ZOOM: 属"效果以机身行为为准"的功能触发,未逐项确认。
+#   - NOTIFY_CAMERA_CALIBRATION / NOTIFY_DEPTH_GSENSOR_CALIBRATION: 会改写
+#     用户真机上的标定状态,后果不可逆,确认前不暴露。
+#   - NOTIFY_FRAMEFIT / NOTIFY_GENERATE_CAMERA_PATTERN /
+#     NOTIFY_SMART_EYE_PROTECTION: 效果未在真机确认。
 BUTTON_DEFS: tuple[tuple[str, str, str, str, str | None], ...] = (
     ("home", "home", "mdi:home", "NOTIFY_KEYEVENT", "3"),
     ("back", "back", "mdi:arrow-left", "NOTIFY_KEYEVENT", "4"),
     ("menu", "menu", "mdi:menu", "NOTIFY_KEYEVENT", "82"),
-    # 243 = KEYCODE_TV_INPUT_HDMI_1 — 实验性,固件可能忽略
-    ("input_source", "input_source", "mdi:video-input-hdmi", "NOTIFY_KEYEVENT", "243"),
     ("auto_focus", "auto_focus", "mdi:auto-fix", "NOTIFY_AUTO_FOCUS", None),
-    ("patternless_auto_focus", "patternless_auto_focus", "mdi:focus-auto",
-     "NOTIFY_PATTERNLESS_AUTO_FOCUS", None),
     # 以下为固件功能触发(NOTIFY_APP_* / 校正触发),效果以机身行为为准
     ("floating_settings", "floating_settings", "mdi:tune-vertical",
      "NOTIFY_APP_FLOATING_SETTINGS", None),
@@ -32,8 +37,6 @@ BUTTON_DEFS: tuple[tuple[str, str, str, str, str | None], ...] = (
      "NOTIFY_APP_MANUAL_QC", None),
     ("manual_shift", "manual_shift", "mdi:arrow-expand-horizontal",
      "NOTIFY_APP_MANUAL_SHIFT", None),
-    ("manual_zoom", "manual_zoom", "mdi:magnify-plus-outline",
-     "NOTIFY_APP_MANUAL_ZOOM", None),
     ("panel_alignment", "panel_alignment", "mdi:grid",
      "NOTIFY_APP_PANELALIGNMENT", None),
     ("screen_fit", "screen_fit", "mdi:monitor-screenshot",
@@ -47,15 +50,6 @@ BUTTON_DEFS: tuple[tuple[str, str, str, str, str | None], ...] = (
      "NOTIFY_APP_ERROR_WARNING", None),
     ("wall_color_fit", "wall_color_fit", "mdi:palette",
      "NOTIFY_AUTO_FIT_WALL_COLOR", None),
-    ("camera_calibration", "camera_calibration", "mdi:camera-iris",
-     "NOTIFY_CAMERA_CALIBRATION", None),
-    ("depth_gsensor_calibration", "depth_gsensor_calibration", "mdi:axis-z-rotate-clockwise",
-     "NOTIFY_DEPTH_GSENSOR_CALIBRATION", None),
-    ("framefit", "framefit", "mdi:crop-free", "NOTIFY_FRAMEFIT", None),
-    ("generate_camera_pattern", "generate_camera_pattern", "mdi:image-filter-center-focus",
-     "NOTIFY_GENERATE_CAMERA_PATTERN", None),
-    ("smart_eye_protect_run", "smart_eye_protect_run", "mdi:eye-outline",
-     "NOTIFY_SMART_EYE_PROTECTION", None),
     # 以下两个参数格式为 size=2, params="1 1",真机实测返回 SUCCESS:
     ("auto_correction_run", "auto_correction_run", "mdi:crop-rotate",
      "NOTIFY_AUTO_CORRECTION", "1 1"),

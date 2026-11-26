@@ -67,12 +67,6 @@
       }
     },
     "select": {
-      "standby_mode": {
-        "name": "Startup mode"
-      },
-      "color_temp": {
-        "name": "Color temperature"
-      },
       "dynamic_contrast": {
         "name": "Dynamic contrast"
       },
@@ -101,14 +95,8 @@
       "menu": {
         "name": "Menu"
       },
-      "input_source": {
-        "name": "Input source (experimental)"
-      },
       "auto_focus": {
         "name": "Auto focus"
-      },
-      "patternless_auto_focus": {
-        "name": "Patternless auto focus (experimental)"
       },
       "floating_settings": {
         "name": "Floating settings"
@@ -121,9 +109,6 @@
       },
       "manual_shift": {
         "name": "Picture shift"
-      },
-      "manual_zoom": {
-        "name": "Picture zoom (experimental)"
       },
       "panel_alignment": {
         "name": "Panel alignment"
@@ -139,21 +124,6 @@
       },
       "wall_color_fit": {
         "name": "Wall color auto fit (trigger)"
-      },
-      "camera_calibration": {
-        "name": "Camera calibration (experimental)"
-      },
-      "depth_gsensor_calibration": {
-        "name": "G-sensor calibration (experimental)"
-      },
-      "framefit": {
-        "name": "Frame fit (experimental)"
-      },
-      "generate_camera_pattern": {
-        "name": "Generate calibration pattern (experimental)"
-      },
-      "smart_eye_protect_run": {
-        "name": "Smart eye protection (trigger, experimental)"
       },
       "auto_correction_run": {
         "name": "Auto correction (trigger)"

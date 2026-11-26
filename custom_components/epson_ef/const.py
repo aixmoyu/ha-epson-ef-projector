@@ -20,28 +20,11 @@ DIGEST_PASSWORD = "qYT_h*Gm+RLx7|,Z!D##q6z%dQSc3vn/"
 
 KEYCODE_SEND = "NOTIFY_KEYEVENT"
 
-# 启动模式(PJ_STANDBY_MODE)取值映射。
-# 节能=false、快速启动=true,固件 API 以 0/1 存储。原始值始终保留在实体属性
-# raw_value 中,若实际设备映射相反,可通过属性核对。
-STANDBY_MODE_OPTIONS: dict[str, str] = {
-    "0": "节能",
-    "1": "快速启动",
-}
-
-
-def standby_option_to_raw(option: str) -> str | None:
-    """Map a human option ('节能'/'快速启动') to the raw API value."""
-    for raw, label in STANDBY_MODE_OPTIONS.items():
-        if label == option:
-            return raw
-    return None
-
-
-def standby_raw_to_option(raw: str | None) -> str | None:
-    """Map a raw API value to its human option; unknown values stay None."""
-    if raw is None:
-        return None
-    return STANDBY_MODE_OPTIONS.get(raw)
+# 启动模式(PJ_STANDBY_MODE):固件以 0/1 存储,但 0/1 对应的语义
+# (节能 / 快速启动)来自固件菜单定义,未在真机上逐台核对,存在反向的可能。
+# 语义未确认 ⇒ 不暴露可写实体;原始值仅作为 media_player 的只读属性
+# standby_mode 透出,由用户自行与机身菜单对照。
+# 恢复条件:真机确认 0/1 与机身选项的对应关系后,再以带标签的 select 暴露。
 
 
 # 同值回写法实测可写的设置项(0/1 型开关)。
@@ -63,17 +46,17 @@ WRITABLE_SWITCHES: list[tuple[str, str, str, str]] = [
      "CONFIG_GET_VMUTE", "CONFIG_SET_VMUTE"),
 ]
 
-# 多档设置(档位=原始 API 值,语义留待用户对照机身菜单确认)
+# 多档设置(档位=原始 API 值)
 # 元组结构:(唯一后缀, 翻译键, GET 命令, SET 命令, 原始档位, 档位标签或 None)
 # 标签依据机身菜单选项定义:
 #   投影方式(正投/吊装/背投/吊装背投),读写回环已实测
 #   动态对比度(关/正常/高速)
-#   色温的 pjctl 原始值语义尚未确认(机身菜单的标准/暖色/冷色走 Android 全局设置,
-#   与 pjctl COLOR_TEMP 数值不同源),故不给标签、保持原始值。
+#   投影偏好(色彩/明亮),变值回环已实测
+# 未列入本表的命令(真机验证前不暴露写通路):
+#   色温(CONFIG_SET_COLOR_TEMP):pjctl 的 0/1/2 与机身菜单「标准/暖色/冷色」
+#   不同源(机身走 Android 全局设置),原始值语义未确认。读通路
+#   CONFIG_GET_COLOR_TEMP 仍作为只读诊断值保留在 coordinator 的 diag 中。
 WRITABLE_SELECTS: list[tuple[str, str, str, str, list[str], dict[str, str] | None]] = [
-    ("color_temp", "color_temp",
-     "CONFIG_GET_COLOR_TEMP", "CONFIG_SET_COLOR_TEMP",
-     ["0", "1", "2"], None),
     ("dynamic_contrast", "dynamic_contrast",
      "CONFIG_GET_DYNAMIC_CONTRAST", "CONFIG_SET_DYNAMIC_CONTRAST",
      ["0", "1", "2"], {"0": "关", "1": "正常", "2": "高速"}),

@@ -139,6 +139,17 @@ def _async_remove_legacy_entities(
     - ``button-engine_refresh`` was removed: the NOTIFY command
       only marks the refresh-confirmation app's startup and does nothing
       on its own.
+    - ``button-{input_source,patternless_auto_focus,manual_zoom,
+      camera_calibration,depth_gsensor_calibration,framefit,
+      generate_camera_pattern,smart_eye_protect_run}`` were removed: their
+      effects (and, for the two calibration triggers, their side effects on
+      the projector's calibration state) are not verified on a device.
+    - ``setting-color_temp`` was removed: the pjctl values 0/1/2 have no
+      confirmed mapping to the projector menu's colour-temperature options.
+    - ``standby_mode`` was a writable select with "energy saving / fast
+      start" labels; the 0/1 → label mapping is unverified, so the entity was
+      dropped. The raw value stays available as the media_player attribute
+      ``standby_mode``.
     """
     registry = er.async_get(hass)
     # unique_id 后缀 → 该后缀所属的平台。suffix 拼在 base_id 后面组成完整
@@ -146,7 +157,21 @@ def _async_remove_legacy_entities(
     legacy: dict[str, tuple[str, ...]] = {
         "sensor": ("standby_mode", "serial", "light_output"),
         "switch": ("setting-refresh",),
-        "button": ("button-engine_refresh",),
+        "select": (
+            "standby_mode",
+            "setting-color_temp",
+        ),
+        "button": (
+            "button-engine_refresh",
+            "button-input_source",
+            "button-patternless_auto_focus",
+            "button-manual_zoom",
+            "button-camera_calibration",
+            "button-depth_gsensor_calibration",
+            "button-framefit",
+            "button-generate_camera_pattern",
+            "button-smart_eye_protect_run",
+        ),
     }
     wanted: set[tuple[str, str]] = set()
     for platform, suffixes in legacy.items():

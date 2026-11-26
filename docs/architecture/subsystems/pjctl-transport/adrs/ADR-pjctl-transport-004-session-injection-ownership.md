@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-004
 
 description: "HTTP 会话采用『构造可注入 + 懒创建 + 所有权标志』：外部可传入 ClientSession 以复用 HA 的连接池（单测则注入 fake）；未注入时首次请求懒建；close() 只关闭自己拥有的 session。该决策换来可测性与宿主复用，但留下三处生命周期缺口。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 status: accepted
 
@@ -41,7 +41,7 @@ accepted
 **约束条件**：
 
 - 不得 import homeassistant（`api.py:1-3`）。
-- 单测必须在纯 Python 环境跑通（实测 `python3 -m unittest discover -s tests` → 64 tests OK）。
+- 单测必须在纯 Python 环境跑通（实测 `python3 -m unittest discover -s tests` → 73 tests OK）。
 - 卸载路径必须释放资源（`__init__.py:213-221`），否则 HA 会报"未关闭的 session"。
 
 ## 2. 决策驱动因素（Decision Drivers）

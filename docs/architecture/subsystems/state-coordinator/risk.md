@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: state-coordinator 范围内的架构风险：故障域限定在 coordinator.py 的轮询编排与 const.py 的契约常量。核心风险面是「契约表宽度漂移导致全集成不可用」「慢轮时长超出轮询间隔造成积压」「待机期间状态整段冻结被误读」「乐观值被真值覆盖时机不透明」「死常量与硬编码造成双份事实」。跨模块级（单线程固件挂起、部署拓扑）见 architecture_views/risk.md，本文件不重复。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 模块架构风险分析
@@ -19,7 +19,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 |R-SC-03|待机期间状态整段冻结被误读|设备进入待机后，`if state == "on":`（`:61`）使 `diag`/`settings` 两个键**整段不刷新**|实体仍显示待机前的值（因 carry-forward），用户看到「亮度 100%」而设备已关机。`stale` 属性只覆盖 `light_hours`（`sensor.py:76`）与 `distance`（`sensor.py:118-119`），**未覆盖读 `settings` 的 13 个实体与读 `diag` 的 5 个消费点**|高（每次关机都发生）|中|P1|`sensor.py` 的两个传感器有 `stale`；`switch.py`/`select.py`/`number.py` 的 settings 类实体**没有任何陈旧标记**|① 给 `settings`/`diag` 加 `diag_measured_at`/`settings_measured_at` 时间戳并暴露；② 或在实体 `available` 属性里叠加 `state == "on"`（但会丢失「最后一次已知值」的价值）|部分缓解|
 |R-SC-04|`_poll_count` 无上界且进程重启即归零|长时间运行后 `_poll_count` 单调递增（`:38`）|Python int 无溢出风险，但**重启后归零**意味着重启后的首轮必然执行完整慢轮（`:59` 的 `== 1`）。若 HA 频繁重启（或 config entry 频繁重载，`__init__.py:209-210`），每次都会打一轮 35 条请求|低|轻微|P3|无|可接受；但若出现「重启风暴」场景应改为「距上次慢轮超过 N 秒则执行」的时间判据而非计数判据|接受|
 |R-SC-05|`light_measured_at` 契约曾漂移|该键被声明为 ISO 字符串（`:54-56` 注释明示「必须 JSON 可序列化」）|两个消费方都写成 `measured.isoformat() if hasattr(measured, "isoformat") else measured`（`sensor.py:80-82`、`media_player.py:118-120`）——**不信任契约**的防御性代码|—（已完成）|轻微|P3|消费方双侧兼容|契约本身正确；建议删除 `hasattr` 分支以恢复「只有一种表示」的清晰度，或反之在注释里说明为何保留|已缓解（带异味）|
-|R-SC-06|`AMBIENT_MODE_OPTIONS` 无宽度护栏|该表不在 `tests/test_const_contract.py:27-32` 的 `TABLE_SOURCES` 内|`select.py:180` 用 `[label for label, _mode in ...]`（宽度 2 解包）、`:187` 用 `dict(...)`（宽度 2）。若将来加第三列，`:180` 立即 `ValueError`，而测试不会失败|中|中|P2|无|把该表加入 `TABLE_SOURCES`，或显式在表定义处加 `assert all(len(r) == 2 ...)`|未缓解|
+|R-SC-06|`AMBIENT_MODE_OPTIONS` 无宽度护栏|该表不在 `tests/test_const_contract.py:27-32` 的 `TABLE_SOURCES` 内|`select.py:124` 用 `[label for label, _mode in ...]`（宽度 2 解包）、`:187` 用 `dict(...)`（宽度 2）。若将来加第三列，`:180` 立即 `ValueError`，而测试不会失败|中|中|P2|无|把该表加入 `TABLE_SOURCES`，或显式在表定义处加 `assert all(len(r) == 2 ...)`|未缓解|
 |R-SC-07|死常量与重复事实|`FOCUS_STEP_UNIT`（`const.py:122`）零生产消费者，仅 `tests/test_regressions.py:91` 断言；`STANDBY_MODE_OPTIONS` 无外部消费者但仍公开导出|读者误以为改 `FOCUS_STEP_UNIT` 会改变对焦步进行为——实际 `api.py:516-529` 直接发 `INC`/`DEC`，步长完全由固件决定|高（认知陷阱）|轻微|P3|`FOCUS_STEP_UNIT` 的注释（`:121`）写了「仅用于需要微调一格时」，但代码里并没有「微调一格」的调用点|① 删除 `FOCUS_STEP_UNIT` 并把回归测试换成断言 `api.focus_step` 不发数值参数；② 或在常量旁明确标注「回归哨兵，无生产消费者」|未缓解|
 |R-SC-08|`probes` 类型标注与实际宽度不符|标注为 `list[tuple[str, str, str, str \| None]]`（4 元素，`:63`），实际 17 行全部是 3 元素（AST 实测）；解包处是 `for key, cmd, params in probes`（`:84`）|类型检查器（mypy）会认为每行有 4 项而报错或给出错误提示；`test_const_contract` 不覆盖 `probes`，故无护栏|确定（标注就是错的）|轻微|P3|无|把标注改为 `list[tuple[str, str, str \| None]]`（3 元素）|未缓解|
 |R-SC-09|`if state == "on":` 双重判定（`:61` 与 `:120`）|`:120` 位于 `:61` 块内部，且 `state` 在 `:43`/`:49` 之后到 `:133` 之间无重新赋值（AST 核验）|`:120` 恒为真 → 冗余但无害。危险在于「读者从冗余推断存在两条不同进入条件」，且若将来有人把 `product` 读取移出 `:61` 块，会引入待机轮多打 1 条请求|确定（代码事实）|轻微|P3|无|删除 `:120` 的判定（保持行为不变），或加注释说明「与 `:61` 同条件，保留为防御」|未缓解（刻意保留）|

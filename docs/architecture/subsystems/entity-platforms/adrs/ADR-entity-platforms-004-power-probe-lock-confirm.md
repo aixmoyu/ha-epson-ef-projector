@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-004
 description: "电源动作采用『动作前探测 → 盲发一次 toggle → 乐观置态 → 最多 10s 确认 → 未确认回落刷新』的三段式，并用每实例 asyncio.Lock 串行化。理由是在只有 toggle 键的固件上，幂等必须实现在动作前；而锁的作用域选择每实例而非每设备，是一次有意识的取舍（避免跨 entry 死锁，代价是 services 与按钮可绕过）。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "电源动作探测-发键-确认三段式 + 每实例锁"
 date: 2026-11-07
@@ -21,7 +21,7 @@ accepted（锁作用域的已知缺口见备注）
 
 ## 1. 背景
 
-**业务背景**：投影仪只有一个电源键（`KEYCODE_POWER` = 26，`const.py:206`），语义是 toggle：发一次切换一次。而 HA 的 `media_player.turn_on` / `turn_off` 是**有向**语义。两者之间存在必然的语义鸿沟。
+**业务背景**：投影仪只有一个电源键（`KEYCODE_POWER` = 26，`const.py:189`），语义是 toggle：发一次切换一次。而 HA 的 `media_player.turn_on` / `turn_off` 是**有向**语义。两者之间存在必然的语义鸿沟。
 
 **技术背景**：
 
@@ -93,8 +93,8 @@ async with self._power_lock:              # 串行化
 ## 备注
 
 - **锁的真实边界**（必须明说）：它是**每实体实例**的。绕过它的路径有两条，均无锁、可并发发出同一个盲 toggle（keycode 26）：
-  (a) `services.send_key` 传 `key="POWER"`（`const.py:206` → `services.py:48-54`）；
+  (a) `services.send_key` 传 `key="POWER"`（`const.py:189` → `services.py:48-54`）；
   (b) `services.raw_request` 直接发 `NOTIFY_KEYEVENT` params="26"（`services.py:64`）。
-  注意 `button.py` 的按键表**不含** POWER 键（仅 home/back/menu/input_source 四个 `NOTIFY_KEYEVENT`，`button.py:18-22`），因此按钮平台本身不构成该竞态源。
+  注意 `button.py` 的按键表**不含** POWER 键（仅 home/back/menu/input_source 四个 `NOTIFY_KEYEVENT`，`button.py:54-56`），因此按钮平台本身不构成该竞态源。
 - **静音没有对应的确认机制**：它同样只有 toggle（164），但既不能探测（无读命令）也不能确认，只能靠本地记忆去重（`media_player.py:207-216`）。这是本 ADR 模式在无读通路能力上的降级形态，适用 ADR-002。
 - 若未来固件提供独立的开/关机命令，本 ADR 应被简化：幂等可由命令语义直接保证，锁与确认均可退化为可选优化。

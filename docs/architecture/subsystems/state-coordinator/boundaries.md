@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: state-coordinator 负责把投影仪的无推送 HTTP 世界压缩成一份每轮重建的状态快照，并把「哪些设置可写、值域到哪里、按键码是什么」固化成声明式契约常量。它不实现协议（不建连接、不算 Digest、不拼 size）、不投影实体（不创建 Entity 类）、不装配生命周期（不读 config entry、不注册平台）。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 模块边界
@@ -49,7 +49,7 @@ graph LR
 |entry-core（`__init__.py`）|Direct（构造 + 首刷）|`Ef50Coordinator(hass, api, poll_interval)`（`__init__.py:188`）、`async_config_entry_first_refresh()`（`:190`）；`:191` 只捕获 `ConfigEntryNotReady`，而本模块 `:45` 抛的是 `UpdateFailed` —— 两者是否为同一异常需查 HA 基类实现，本环境未安装 HA 无法核实 → `[待确认]`，见 risk.md R-SC-10|
 |entity-platforms（全部 7 个平台）|Direct（只读属性）|`coordinator.data[*]`：`media_player.py:100-136`、`sensor.py:67-119`、`switch.py:90-102`、`select.py:93-102`, `:143-150`、`number.py:111-140`, `:189-208`, `:263-280`, `:351-377`、`button.py:124-129`、`binary_sensor.py:52-56`|
 |entity-platforms（设备信息）|Direct|`coordinator.data["product"]` 作 `DeviceInfo.model`：`switch.py:83`、`select.py:85`、`number.py:96`、`button.py:128`、`sensor.py:49`、`binary_sensor.py:47`、`media_player.py:87`|
-|entity-platforms（解包声明式表）|Direct（解包表元组）|`WRITABLE_SWITCHES` → `switch.py:38`；`WRITABLE_SELECTS` → `select.py:40`；`AMBIENT_LIGHT_SWITCHES` → `switch.py:45`；`AMBIENT_MODE_OPTIONS` → `select.py:180`, `:187`|
+|entity-platforms（解包声明式表）|Direct（解包表元组）|`WRITABLE_SWITCHES` → `switch.py:38`；`WRITABLE_SELECTS` → `select.py:40`；`AMBIENT_LIGHT_SWITCHES` → `switch.py:45`；`AMBIENT_MODE_OPTIONS` → `select.py:124`, `:187`|
 |services.py|Direct（查表）|`KEYCODES.get(key)`（`services.py:49`），未命中且 key 是纯数字则直接当 keycode（`:50-51`）|
 |diagnostics.py|Direct（整份快照导出）|`dict(getattr(coordinator, "data", None) or {})`（`diagnostics.py:33`）|
 |tests/|AST 静态约束|`tests/test_const_contract.py:27-32`（4 张表的宽度与解包点）、`tests/test_regressions.py:89-95`（锁 `FOCUS_STEP_UNIT == 1`）、`:176-181`|
@@ -80,7 +80,7 @@ graph LR
 |2026-11-01|从 `WRITABLE_SWITCHES` 移除 `refresh` 项；刷新定时器改由 `number` 实体 + `settings["refresh_timer"]` 承载|`GET_REFRESH` 实测返回小时数 1–24 而非 0/1，`SET_REFRESH "1"` 是「立即刷新并关机」（`const.py:50-52`）|`const.py:50-52`、`number.py:143-153`、`__init__.py:139-141`|
 |2026-11-01|新增对焦只读量（`diag["focus_range"]`、`settings["focus_position"]`）进入慢轮|`GET_FOCUS "RANGE"/"POS"` 子命令经真机确认（`coordinator.py:109-115`）|`const.py:105-133`、`api.py:490-514`|
 |2026-11-01|新增 `refresh_timer` 只读量进入慢轮|同上，取代被删的 refresh 开关回读|`coordinator.py:105-108`|
-|2026-11-01|诊断表新增 `auto_focus_state`/`auto_focus_target`（带参 `"0"`/`"1"` 才不挂）|无参数 `GET_AUTO_FOCUS` 挂死 NanoHTTPD，带参秒回（`coordinator.py:78-81`）|`coordinator.py:78-81`、`api.py:634-656`|
+|2026-11-01|诊断表新增 `auto_focus_state`/`auto_focus_target`（带参 `"0"`/`"1"` 才不挂）|无参数 `GET_AUTO_FOCUS` 挂死 NanoHTTPD，带参秒回（`coordinator.py:78-81`）|`coordinator.py:78-81`、`api.py:636-647`|
 |2026-11-07|`FOCUS_STEP_UNIT` 的语义被纠正为「同向稳态步长 = 1」，闭环定位改由 `FOCUS_TRAVEL_UNITS_PER_SEC` 驱动|真机复测：换向首步 ±10、同向后续 ±1（`const.py:108-118`）|`const.py:119-133`、`api.py:516-584`、`number.py:282-301`|
 
 ## 全局功能树映射

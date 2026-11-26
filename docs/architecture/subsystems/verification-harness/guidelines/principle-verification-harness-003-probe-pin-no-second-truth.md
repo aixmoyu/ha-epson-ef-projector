@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-003
 description: "真机结论必须按『探测脚本 → 载荷断言 → 缺陷回归用例』三步固化，且每条断言都要保留设备型号、日期、实测值。测试脚本不得自己复刻生产算法（否则会造出与生产分叉的第二份事实），必须 import 生产实现或用生产常量。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 工程
 principle_scope: module
 ---
@@ -47,7 +47,7 @@ principle_scope: module
 ## 规则
 
 - **每条真机断言必须带三要素**：设备型号（HB71）、日期（2026-11-01 / 2026-11-07）、实测值（`0 264`、`81 90 100`、`error 0 / error 2`）。
-- **验证脚本必须加载生产实现**：`importlib` 直载 `api.py`（20/20 脚本已做到），而不是自己拼 HTTP 请求或复刻算法。
+- **验证脚本必须加载生产实现**：`importlib` 直载 `api.py`（两个脚本已做到），而不是自己拼 HTTP 请求或复刻算法。
 - **需要生产常量时必须 import**，不得在脚本里重写字面量。若脚本刻意测量"与生产不同"的假设，必须在文件头写明"本脚本验证的是旧假设，仅供对照"。
 - **每条实测结论必须配对**：真机观察到的行为 ↔ `tests/` 中的对应断言。
 - **危险命令必须有显式禁止注释**：`tools/probe_refresh.py:9-11` 写"RefreshModeActivity(startRefreshMode):SET_REFRESH size=1 params='1' = 立即开始刷新并 PowerManager.shutdown(关机跑刷新)⚠️ 本脚本绝不发送 '1'"；`api.py:481-487` 的 `set_refresh_timer` docstring 重复了同一警告。**同一危险事实写两遍是刻意的**。

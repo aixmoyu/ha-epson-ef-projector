@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-003
 description: 对固件不可读的状态，实体必须同时具备三件套——RestoreEntity（跨重启保持最后已知值）、assumed_state=True（显式声明这是假设值）、raw_value/时间戳属性（可核对）——并且写成功才翻转本地值。当前 7 个实体完整遵守，而媒体播放器的静音只做了 RestoreEntity，缺 assumed_state，是唯一不合规点。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---
@@ -18,15 +18,15 @@ HB71 固件对若干能力**没有读通路**，实测证据集中在 `const.py`
 |-|-|-|
 | 氛围灯开关（kind 3/4/5）| `GET_AMBIENT_LIGHT` 各子索引全部 FAIL（含新增的 31/32）| `const.py:150-151` |
 | 氛围灯亮度（kind 9）| 同上 | `const.py:150-151` |
-| 氛围灯光效模式（kind 1）| 同上 | `select.py:172-174` |
+| 氛围灯光效模式（kind 1）| 同上 | `select.py:116-118` |
 | 自动对比度 | `GET_AUTO_CONTRAST` 带参仍 FAIL | `api.py:626-630` |
 | 测试图案 | 无读命令 | `switch.py:288-290` |
 | 静音 | 只有 toggle 键（164），无状态查询 | `media_player.py:48-49` |
 
 本模块的合规处理是**三件套**，缺一不可：
 
-1. **`RestoreEntity` + `async_added_to_hass` 恢复**：把上一次 HA state 读回本地字段，使重启后不丢"最后已知值"。实现见 `switch.py:158-164`（氛围灯）、`:219-225`（自动对比度）、`:279-285`（测试图案）、`select.py:197-201`（氛围灯模式）、`number.py:433-442`（氛围灯亮度）。恢复时都做了守卫：`last_state is not None and last_state.state not in ("unknown", "unavailable")`。
-2. **`assumed_state` 返回 `True`**：让 HA 前端给实体打上"假设状态"徽标，并让自动化开发者知道该值不可信。见 `switch.py:166-169`、`:227-230`、`:287-290`、`select.py:203-206`、`number.py:444-447`——注释都是同一句"状态不可读，明确标记为假设状态"。
+1. **`RestoreEntity` + `async_added_to_hass` 恢复**：把上一次 HA state 读回本地字段，使重启后不丢"最后已知值"。实现见 `switch.py:158-164`（氛围灯）、`:219-225`（自动对比度）、`:279-285`（测试图案）、`select.py:141-145`（氛围灯模式）、`number.py:433-442`（氛围灯亮度）。恢复时都做了守卫：`last_state is not None and last_state.state not in ("unknown", "unavailable")`。
+2. **`assumed_state` 返回 `True`**：让 HA 前端给实体打上"假设状态"徽标，并让自动化开发者知道该值不可信。见 `switch.py:166-169`、`:227-230`、`:287-290`、`select.py:147-150`、`number.py:444-447`——注释都是同一句"状态不可读，明确标记为假设状态"。
 3. **写成功才翻转 + 失败不翻转**：`switch.py:171-179` 的结构是 `try: await api... except EpsonApiError: raise HomeAssistantError(...)` 之后才 `self._attr_is_on = on`。这一点让"本地值"至少等价于"最后一次设备接受的写入"。
 
 **唯一不合规点：媒体播放器的静音。** 它做了 ①（`media_player.py:75-81` 从 `last_state.attributes["is_volume_muted"]` 恢复）、做了 ③（`:212-216` 目标态比对 → 发键 → 翻转），但**没有做 ②**：类里既没有 `assumed_state` 属性，也没有说明为什么豁免。对比同样是写-only 的氛围灯开关，静音的漂移风险实际上更高——氛围灯只能由本集成或官方小程序控制，而静音键是实体遥控器上最常被按的键之一，用户随时可能绕过集成改变它（`media_player.py:209-211` 的注释自己也承认"It can still drift if the physical remote is used"）。用户界面上，静音图标与氛围灯开关长得一样"确定"，但可信度不同，这个差异目前不可见。

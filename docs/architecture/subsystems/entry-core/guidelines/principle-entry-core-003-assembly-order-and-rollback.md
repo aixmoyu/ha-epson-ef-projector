@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entry-core-003
 description: "setup 的步骤顺序是契约而非风格：身份解析 → 注册表迁移 → 遗留清理 → 协调器首刷 → 发布 hass.data → 转发平台。重排任何一步都会产生『用旧身份建新实体』或『实体先于状态源上线』的中间态；同时每条失败出口必须归还已获得的传输资源（session）。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---

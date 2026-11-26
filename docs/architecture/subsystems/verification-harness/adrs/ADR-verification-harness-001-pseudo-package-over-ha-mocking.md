@@ -2,8 +2,8 @@
 project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-001
-description: "在无 Home Assistant 的 CI 环境中验证生产代码，最终选择『伪包注入（只设 __path__ 的 ModuleType）+ AST 静态解析』，明确拒绝 mock HA 与安装 HA 两条路线。代价是 __init__.py 与 7 个平台模块零覆盖，收益是 64 用例 0.2s 跑完且不引入任何测试框架依赖。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+description: "在无 Home Assistant 的 CI 环境中验证生产代码，最终选择『伪包注入（只设 __path__ 的 ModuleType）+ AST 静态解析』，明确拒绝 mock HA 与安装 HA 两条路线。代价是 __init__.py 与 7 个平台模块零覆盖，收益是 73 用例 0.2s 跑完且不引入任何测试框架依赖。"
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "用伪包隔离代替 mock/安装 Home Assistant"
 date: 2026-11-01
@@ -23,12 +23,12 @@ accepted（自 3.10.0 之前确立，`tests/test_api.py` 的 docstring 已写明
 
 ## 1. 背景
 
-**业务背景**：这是一个单文件包分发的 HACS 自定义集成（`custom_components/epson_ef/`，14 模块 2996 行，48 实体）。维护者需要在**每次改协议细节后**都能快速确认没有破坏已固化的真机结论；同时仓库要能被外部贡献者在没有投影仪、没有 HA 的机器上 clone 后立即跑测试。
+**业务背景**：这是一个单文件包分发的 HACS 自定义集成（`custom_components/epson_ef/`，14 模块 3 025 行，36 实体）。维护者需要在**每次改协议细节后**都能快速确认没有破坏已固化的真机结论；同时仓库要能被外部贡献者在没有投影仪、没有 HA 的机器上 clone 后立即跑测试。
 
 **技术背景**：
 
 - 14 个生产模块中 12 个 import `homeassistant`（`__init__.py` 6 处、`number.py` 9 处、`switch.py` 8 处、`select.py` 8 处、`media_player.py` 8 处、`button.py` 7 处、`sensor.py` 7 处、`binary_sensor.py` 6 处、`config_flow.py` 4 处、`coordinator.py` 3 处、`services.py` 3 处、`diagnostics.py` 2 处）。
-- 仅 `api.py`（656 行）与 `const.py`（222 行）为零 HA 依赖；`api.py:1-4` 明确声明 "Pure aiohttp + stdlib; no Home Assistant imports so it can be tested standalone"。
+- 仅 `api.py`（647 行）与 `const.py`（199 行）为零 HA 依赖；`api.py:1-4` 明确声明 "Pure aiohttp + stdlib; no Home Assistant imports so it can be tested standalone"。
 - CI 的依赖安装是 `pip install aiohttp ruff pyflakes`（`.github/workflows/tests.yml:18`）——**刻意不含 homeassistant**（该包体量大、版本与 HA 核心强耦合、且需要完整 HA 运行环境才有意义）。
 - 实测环境：`python3 -c "import homeassistant"` → `ModuleNotFoundError`，rc=1。
 
@@ -88,8 +88,8 @@ from epson_ef.api import EpsonApi
 
 - 对照驱动因素 1（真实性）：A 执行的是真实 `api.py`，B/C/D 都会引入替身层或框架层。
 - 对照驱动因素 2（零依赖）：A 只需 `aiohttp`（本来就必需）+ 标准库 `types`/`ast`；B 需手工维护伪造层；C/D 拖入完整 HA。
-- 对照驱动因素 3（速度）：A 实测 **64 用例 0.177–0.20s**；C/D 的 HA fixture 通常需数秒起步。
-- 对照驱动因素 5（覆盖）：A 的损失是明确且可陈述的（`__init__.py` 221 行 + 7 平台 + config_flow/services/diagnostics），而 B 的损失是"看起来覆盖了但覆盖的是 mock"——后者更危险。
+- 对照驱动因素 3（速度）：A 实测 **73 用例 0.158–0.19s**；C/D 的 HA fixture 通常需数秒起步。
+- 对照驱动因素 5（覆盖）：A 的损失是明确且可陈述的（`__init__.py` 265 行 + 7 平台 + config_flow/services/diagnostics），而 B 的损失是"看起来覆盖了但覆盖的是 mock"——后者更危险。
 
 **已知损失（必须随决策一起记录）**：
 
@@ -101,7 +101,7 @@ from epson_ef.api import EpsonApi
 
 - 伪包注入必须幂等（`if "epson_ef" not in sys.modules`），否则 discover 多文件会重复注册。
 - 伪包**只设 `__path__`**，不设 `__file__`/`__spec__`——保持"未执行"的状态可观测。
-- `tools/` 的脚本用更强的双保险：伪包 + `spec_from_file_location("epson_ef.api", ...)` + `sys.modules["epson_ef.api"] = mod` + `exec_module`（20/20 脚本，如 `tools/diagnose_state.py:11-18`）。
+- `tools/` 的脚本用更强的双保险：伪包 + `spec_from_file_location("epson_ef.api", ...)` + `sys.modules["epson_ef.api"] = mod` + `exec_module`（两个脚本均如此，如 `tools/diagnose_state.py:11-18`）。
 - 装配层的结构性约束用 AST 补：清理表内容（`tests/test_regressions.py:99-119`）、实参顺序（`:150-170`）、coordinator 遍历表名（`:177-180`）。
 - 任何"已验证"的表述必须附覆盖边界说明（参见 `principle-verification-harness-004`）。
 

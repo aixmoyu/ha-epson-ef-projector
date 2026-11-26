@@ -8,7 +8,7 @@ id: principle-pjctl-transport-003-dangerous-variants-not-implemented
 
 description: "命令族里存在会关机、清用户配置或进入工厂态的参数变体时，传输层用『不实现』而非『运行时校验』来屏蔽：不提供能产生该参数的方法，并在 docstring 写明为什么。代价是 `request()` 公开后仍可绕过，因此这是有边界的约定而非强制机制。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 principle_scope: module
 
@@ -26,7 +26,7 @@ principle_category: 治理
 |-|-|-|-|
 |`SET_REFRESH "1"`（size=1）|立即开始刷新并关机（`RefreshModeActivity` 发完即 `PowerManager.shutdown`）|`set_refresh_timer` 只拼 `f"0 {hours}"`，方法内不存在 `"1"` 分支|`api.py:481-488`（docstring 三次警告），`const.py:50-52`（说明 refresh 已从 `WRITABLE_SWITCHES` 移除），`number.py:150-152`|
 |`SET_AMBIENT_LIGHT "255"`（size=1）|恢复氛围灯出厂设置，清空用户光效配置|三个写方法只产生 `"3 <0\|1> 48"`、`"4\|5 <0\|1>"`、`"9 <0-255> 48"`、`"1 <mode> 48"` 四种形状|`api.py:387-418`，`const.py:146-149`|
-|光效槽 11|小程序临时预览配置，会覆盖用户光效|`AMBIENT_MODE_OPTIONS` 只列 3–6；`set_ambient_mode` 直接拼 `int(mode_id)` 且无校验，但唯一调用方传的是那张表|`const.py:158-163`，`select.py:205-215`，`api.py:411-418`（docstring 明示"slot 11 … deliberately not exposed"）|
+|光效槽 11|小程序临时预览配置，会覆盖用户光效|`AMBIENT_MODE_OPTIONS` 只列 3–6；`set_ambient_mode` 直接拼 `int(mode_id)` 且无校验，但唯一调用方传的是那张表|`const.py:158-163`，`select.py:149-159`，`api.py:411-418`（docstring 明示"slot 11 … deliberately not exposed"）|
 |ESCVP 工厂写命令|MCU 串口透传可进入工厂态|只暴露 `AGPATTERN 01/00` 两条（开/关测试图案），完整码表 00–19 不实现|`api.py:420-430`，`const.py:179-183`（"完整码表 00-19 见工厂应用,其余图案视觉语义未确认,只暴露开/关"）|
 
 另有两个"已删种"的历史痕迹：`engine_refresh` 按钮（`NOTIFY_APP_REFRESH`）被移除，因为它只是刷新确认应用的启动标记、单独发送无任何动作（`button.py:41-44`）；`refresh` 从 `WRITABLE_SWITCHES` 移除，因为把它当 0/1 开关是错的（`const.py:50-52`）。

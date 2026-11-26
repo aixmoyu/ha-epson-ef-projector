@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entry-core-004
 description: "删除或改型任何实体，都必须在 setup 阶段显式清偿注册表负债：把旧 unique_id 后缀登记进 legacy 清理表，并让清理同时匹配新身份与历史地址两种前缀。HA 注册表只增不删，漏登记的实体将永久以 unavailable 存在。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 治理
 principle_scope: module
 ---

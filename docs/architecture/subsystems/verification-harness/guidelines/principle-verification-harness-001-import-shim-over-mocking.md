@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-001
 description: "在没有 Home Assistant 的环境里验证生产代码时，用伪包注入（手工构造 ModuleType 并只设 __path__）绕开包的 __init__.py，而不是伪造/模拟 Home Assistant 本身。代价是 __init__.py 的装配逻辑零覆盖，因此必须显式承认这条边界，禁止把『测试全绿』当作『集成可用』。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 工程
 principle_scope: module
 ---
@@ -28,7 +28,7 @@ if "epson_ef" not in sys.modules:
 from epson_ef.api import EpsonApi  # noqa: E402
 ```
 
-三处逐字相同：`tests/test_api.py:23-26`、`tests/test_const_contract.py:21-24`、`tests/test_regressions.py:24-27`。同一手法在 20 个真机脚本里演化为"伪包 + `importlib.util.spec_from_file_location("epson_ef.api", ...)` + 预登记 + `exec_module`"的双保险（`tools/diagnose_state.py:11-18`）。
+三处逐字相同：`tests/test_api.py:23-26`、`tests/test_const_contract.py:21-24`、`tests/test_regressions.py:24-27`。同一手法在两个真机脚本里演化为"伪包 + `importlib.util.spec_from_file_location("epson_ef.api", ...)` + 预登记 + `exec_module`"的双保险（`tools/diagnose_state.py:11-18`）。
 
 这条原则之所以成立，是因为**被测对象本身被设计成可隔离的**：`api.py:1-4` 明确写 "Pure aiohttp + stdlib; no Home Assistant imports so it can be tested standalone"，`const.py` 零内部 import。可测性是生产代码的设计属性，不是测试的技巧。
 
@@ -42,7 +42,7 @@ from epson_ef.api import EpsonApi  # noqa: E402
 ## 适用范围
 
 - `tests/` 全部 4 个文件
-- `tools/` 全部 20 个脚本
+- `tools/` 全部 2 个脚本
 - 任何需要在本仓库新增的、要触碰生产代码的验证代码
 
 ## 规则
@@ -58,7 +58,7 @@ from epson_ef.api import EpsonApi  # noqa: E402
 - ❌ 写 `sys.modules["homeassistant"] = MagicMock()` 之类的全局伪造——它会让 `__init__.py` "能跑"，但断言的是 mock 的行为。
 - ❌ 在测试里 `from custom_components.epson_ef import ...`——这会走真实包入口，无 HA 时直接 ImportError。
 - ❌ 用 `sys.path` 技巧替代 `__path__`（`tests/test_api.py:19` 的 `sys.path.insert` 对手法本身并非必需，实测在 `/tmp` 下不插也能导入；留着只是历史遗留）。
-- ❌ 因为"64 用例全绿"就认为 `async_setup_entry`、迁移、平台转发正确——它们一行都没执行。
+- ❌ 因为"73 用例全绿"就认为 `async_setup_entry`、迁移、平台转发正确——它们一行都没执行。
 - ❌ 用 `*` 兜底或 `try/except ImportError` 包裹生产模块导入，把导入失败降级成 skip（这会让隔离手法退化成一个更隐蔽的 VH-S03）。
 
 ## 修改检查清单

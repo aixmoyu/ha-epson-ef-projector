@@ -1,19 +1,19 @@
 ---
 project: "ha-epson-ef-projector"
 type: logical-view
-description: "Home Assistant 自定义集成的逻辑分层：入口装配层(__init__/config_flow/diagnostics)把固件 pjctl HTTP 客户端(传输层 api.py)注入单一 DataUpdateCoordinator(状态编排层)，再由 7 个实体平台把共享的 coordinator.data 字典投影成 48 个实体；const.py 作为纯声明契约层被所有层依赖，services.py 提供绕过实体的动作入口。本项目不存在 DDD 四层与限界上下文，实际边界是 HA 集成的六层与按固件能力划分的 7 个功能域。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+description: "Home Assistant 自定义集成的逻辑分层：入口装配层(__init__/config_flow/diagnostics)把固件 pjctl HTTP 客户端(传输层 api.py)注入单一 DataUpdateCoordinator(状态编排层)，再由 7 个实体平台把共享的 coordinator.data 字典投影成 36 个实体；const.py 作为纯声明契约层被所有层依赖，services.py 提供绕过实体的动作入口。本项目不存在 DDD 四层与限界上下文，实际边界是 HA 集成的六层与按固件能力划分的 7 个功能域。"
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 逻辑视图
 
 ## 代码结构与模块划分
 
-本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 2996 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（`diagnose_state.py`、`verify_full.py`、`enum_map.json`）与 `tests/`（4 文件 / 1145 行）属于验证设施，不是运行时域。
+本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 3 025 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（`diagnose_state.py`、`verify_full.py`、`enum_map.json`）与 `tests/`（4 文件 / 1 218 行）属于验证设施，不是运行时域。
 
 ```text
 project-root/
-├── custom_components/epson_ef/          # 唯一生产包（2996 行 / 14 模块）
+├── custom_components/epson_ef/          # 唯一生产包（3 025 行 / 14 模块）
 │   ├── __init__.py                      # 入口装配层：setup/unload、身份解析与迁移、平台转发
 │   ├── config_flow.py                    # 入口装配层：配置/重配置/选项流（VERSION=2）
 │   ├── diagnostics.py                    # 入口装配层（可观测）：诊断包导出
@@ -23,14 +23,14 @@ project-root/
 │   ├── const.py                          # 契约常量层：DOMAIN/端口/命令名/取值域/声明式实体表
 │   ├── media_player.py                   # 实体平台层：电源/音量/媒体键（1 实体）
 │   ├── sensor.py                         # 实体平台层：光源时长、投射距离（2 实体）
-│   ├── select.py                         # 实体平台层：启动模式 + 4 个固件档位项 + 氛围灯模式（6 实体）
+│   ├── select.py                         # 实体平台层：3 个固件档位项 + 氛围灯模式（4 实体）
 │   ├── binary_sensor.py                  # 实体平台层：连通性（1 实体）
 │   ├── button.py                         # 实体平台层：30 个动作按钮（表驱动）
 │   ├── switch.py                         # 实体平台层：6 配置开关 + 3 氛围灯 + 2 乐观开关（11 实体）
 │   ├── number.py                         # 实体平台层：亮度/定时器/对焦/增益×3/氛围亮度（7 实体）
 │   ├── manifest.json / hacs.json         # 集成元数据（iot_class=local_polling，requirements=[]）
 │   ├── services.yaml / strings.json      # 服务与文案（strings.json 与 translations/en|zh-Hans 同构）
-│   └── translations/{en,zh-Hans}.json    # 222 行 ×2，键集合与 strings.json 完全一致
+│   └── translations/{en,zh-Hans}.json    # 156 行 ×2，键集合与 strings.json 完全一致
 ├── tests/                                # 证据设施：unittest + AST 契约测试（4 文件）
 ├── tools/                                # 验证设施：排障与真机验收脚本
 └── docs/                                 # 参考文档（非事实来源）
@@ -45,13 +45,13 @@ project-root/
 | `diagnostics.py` | 39 | 入口装配（可观测） | 导出 entry/identity/coordinator/api 四段诊断，用 `getattr` 读私有字段 | `custom_components/epson_ef/diagnostics.py:12`, `:35` |
 | `services.py` | 102 | 动作入口 | 两个服务：按键（键名或数字 keycode）与任意 pjctl 透传；结果经 `epson_ef_response` 事件返回 | `custom_components/epson_ef/services.py:15`, `:39`, `:56`, `:67` |
 | `coordinator.py` | 154 | 状态编排 | 每次轮询一次 `probe_state`（快），每 12 次轮询一轮 30+ 条诊断读（慢），并把 `settings`/`diag` 合并与结转 | `custom_components/epson_ef/coordinator.py:19`, `:37`, `:59`, `:134` |
-| `api.py` | 656 | 传输协议 | Digest 挑战缓存与单次重试、`size=token 数` 协议约定、34 个公开命令方法、对焦闭环 | `custom_components/epson_ef/api.py:68`, `:99`, `:147`, `:171`, `:544` |
+| `api.py` | 647 | 传输协议 | Digest 挑战缓存与单次重试、`size=token 数` 协议约定、34 个公开命令方法、对焦闭环 | `custom_components/epson_ef/api.py:68`, `:99`, `:147`, `:171`, `:544` |
 | `const.py` | 222 | 契约常量 | DOMAIN/端口/命令名/固件取值域；4 张声明式实体表驱动平台装配；零内部 import | `custom_components/epson_ef/const.py:4`, `:53`, `:75`, `:138`, `:222` |
 | `media_player.py` | 228 | 实体平台 | 电源盲切换（先探测再发键 + 锁）、音量/静音乐观状态、播放键 | `custom_components/epson_ef/media_player.py:73`, `:178`, `:207` |
 | `sensor.py` | 120 | 实体平台 | 光源时长（含 `stale` 标记）、投射距离（mm→m） | `custom_components/epson_ef/sensor.py:36`, `:57`, `:88` |
-| `select.py` | 219 | 实体平台 | 档位项：原始值 ↔ 标签双向映射；启动模式专用表；氛围灯模式乐观态 | `custom_components/epson_ef/select.py:48`, `:116`, `:167` |
+| `select.py` | 162 | 实体平台 | 档位项：原始值 ↔ 标签双向映射；氛围灯模式乐观态 | `custom_components/epson_ef/select.py:43`, `:111` |
 | `binary_sensor.py` | 56 | 实体平台 | 连通性：跟随 `coordinator.last_update_success`，但永不 unavailable | `custom_components/epson_ef/binary_sensor.py:49` |
-| `button.py` | 142 | 实体平台 | 30 条 `BUTTON_DEFS` 表驱动（NOTIFY_* 触发 + CONFIG_SET_QC 几何步进） | `custom_components/epson_ef/button.py:17`, `:86`, `:136` |
+| `button.py` | 132 | 实体平台 | 10 条 `BUTTON_DEFS` 表驱动（NOTIFY_* 触发 + CONFIG_SET_QC 几何步进） | `custom_components/epson_ef/button.py:17`, `:86`, `:136` |
 | `switch.py` | 306 | 实体平台 | 6 个 0/1 回写开关 + 3 个氛围灯写-only + 测试图案 + 自动对比度 | `custom_components/epson_ef/switch.py:28`, `:56`, `:120`, `:188`, `:249` |
 | `number.py` | 458 | 实体平台 | 光源亮度、刷新定时器、对焦（闭环）、RGB 增益三通道共享一条 GET、氛围亮度 | `custom_components/epson_ef/number.py:47`, `:66`, `:143`, `:223`, `:304`, `:399` |
 
@@ -140,7 +140,7 @@ graph TD
 | 入口装配层 | `__init__.py`, `config_flow.py`, `diagnostics.py` | 配置项→运行时对象装配；身份（serial/host:port）与注册表迁移；平台转发；卸载释放 | 全部下层 | 无越界，但 `__init__.py` 承载了 3 类迁移逻辑（`__init__.py:31`, `:79`, `:123`），职责偏重 |
 | 动作入口层 | `services.py` | 面向用户的非实体动作（按键注入、任意命令透传） | 契约层 + `hass.data` | 直接调用 `api.request` 透传（`services.py:64`），属设计意图 |
 | 状态编排层 | `coordinator.py` | 唯一轮询源；快探针（电源/灯时）+ 慢诊断（每 12 次）合并、结转 | `api`, `const` | 写入共享字典作为跨层契约，无类型约束 |
-| 传输协议层 | `api.py` | Digest 认证、协议细节（`size`=token 数）、错误分类、命令语义、对焦闭环 | `const` | 34 个公开命令方法中 12 个在包内无任何调用者（风险 R1） |
+| 传输协议层 | `api.py` | Digest 认证、协议细节（`size`=token 数）、错误分类、命令语义、对焦闭环 | `const` | 34 个公开命令方法中 13 个在包内无任何调用者（风险 R1） |
 | 实体平台层 | 7 个平台文件 | 把 `coordinator.data` 投影为实体；写动作 + 乐观更新 + 触发刷新 | `coordinator`, `api`, `const` | **系统性越界**：平台直接 `coordinator.api.request(...)` 绕过高层封装（风险 R2） |
 | 契约常量层 | `const.py` | 固件命令名、取值域、标签映射、4 张声明式实体表 | 无 | 表宽度与消费者解包宽度靠测试守护（`tests/test_const_contract.py:1`） |
 
@@ -207,7 +207,7 @@ sequenceDiagram
 | 固件协议适配 | `custom_components/epson_ef/api.py` | `EpsonApi`, 4 个异常类 | 上游：固件；下游：协调器/平台 | ACL |
 | 轮询编排 | `custom_components/epson_ef/coordinator.py` | `Ef50Coordinator` | 上游：api；下游：7 平台 | 共享内核 |
 | 契约 | `custom_components/epson_ef/const.py` | 4 张实体表 + 取值域 | 被所有层引用 | 叶子 |
-| 实体平台 | `media_player.py`/`sensor.py`/`select.py`/`binary_sensor.py`/`button.py`/`switch.py`/`number.py` | 17 个具体实体类（+1 个 `_Ef50Sensor` 抽象基类） | 上游：协调器 + api | 适配器 |
+| 实体平台 | `media_player.py`/`sensor.py`/`select.py`/`binary_sensor.py`/`button.py`/`switch.py`/`number.py` | 16 个具体实体类（+1 个 `_Ef50Sensor` 抽象基类） | 上游：协调器 + api | 适配器 |
 | 动作入口 | `custom_components/epson_ef/services.py` | `send_key`, `raw_request` | 上游：HA 服务；下游：api | 命令入口 |
 | 配置入口 | `custom_components/epson_ef/config_flow.py` | `Ef50ConfigFlow`(VERSION=2), `Ef50OptionsFlow` | 上游：用户；下游：api | 边界入口 |
 | 可观测 | `custom_components/epson_ef/diagnostics.py` | `async_get_config_entry_diagnostics` | 只读 | 旁路 |
@@ -232,12 +232,12 @@ PLATFORMS = [
 | `sensor` | `sensor.py` | `Ef50LightHoursSensor`, `Ef50DistanceSensor`（共用 `_Ef50Sensor` 基类） | 2 | 列表（`sensor.py:28-33`） |
 | `select` | `select.py` | `Ef50ConfigSelect` ×3, `Ef50AmbientModeSelect` | 4 | 2 次 `async_add_entities`（`select.py:30`, `:38`） |
 | `binary_sensor` | `binary_sensor.py` | `Ef50ConnectivitySensor` | 1 | 列表（`binary_sensor.py:24`） |
-| `button` | `button.py` | `Ef50Button` ×22（`BUTTON_DEFS`） | 22 | 表驱动推导（`button.py:78-89`） |
+| `button` | `button.py` | `Ef50Button` ×10（`BUTTON_DEFS`） | 10 | 表驱动推导（`button.py:76-88`） |
 | `switch` | `switch.py` | `Ef50ConfigSwitch` ×6, `Ef50AmbientLightSwitch` ×3, `Ef50TestPatternSwitch`, `Ef50AutoContrastSwitch` | 11 | 4 次 `async_add_entities`（`switch.py:34`, `:41`, `:48`, `:51`） |
 | `number` | `number.py` | `Ef50LightOutputNumber`, `Ef50RefreshTimerNumber`, `Ef50FocusNumber`, `Ef50AmbientBrightnessNumber`, `Ef50ColorGainNumber` ×3 | 7 | 列表 + `extend`（`number.py:53-63`） |
-| **合计** | 7 文件 / 1456 行 | 16 个具体实体类 | **48** | — |
+| **合计** | 7 文件 / 1 454 行 | 16 个具体实体类 | **36** | — |
 
-数量交叉校验：`strings.json` 的 `entity` 段键数 = button 22 / switch 11 / select 4 / number 7 / sensor 2 / binary_sensor 1（media_player 无 translation_key，用配置条目名），与代码实体数逐一吻合；`tests/test_const_contract.py` 亦锁定 4 张表的宽度与解包点（`tests/test_const_contract.py:118-145`）。
+数量交叉校验：`strings.json` 的 `entity` 段键数 = button 10 / switch 11 / select 4 / number 7 / sensor 2 / binary_sensor 1（media_player 无 translation_key，用配置条目名），与代码实体数逐一吻合；`tests/test_const_contract.py` 亦锁定 4 张表的宽度与解包点（`tests/test_const_contract.py:118-145`）。
 
 ### 实体命名规律
 
@@ -248,14 +248,14 @@ PLATFORMS = [
   - 裸后缀式：`{base_id}-connectivity`（`binary_sensor.py:41`）、`{base_id}-{suffix}`（`sensor.py:44`）；
   - 媒体播放器直接用 `base_id`（`media_player.py:68`）。
 - **展示名**：除 media_player 用 `entry.data["name"]` 作 `_attr_name`（`media_player.py:69`）外，其余均 `_attr_has_entity_name = True` + `_attr_translation_key`，由 `translations/*.json` 提供本地化名称。
-- **历史命名残留**：类名一律 `Ef50*`（共 20 个类：`coordinator.py:19`、`media_player.py:41`、`config_flow.py:23`, `:108` 等），而 integration/domain 是 `epson_ef`、覆盖 HB7x 全系；`Ef50` 是早期型号名，已与语义脱节。
+- **历史命名残留**：类名一律 `Ef50*`（共 19 个类：`coordinator.py:19`、`media_player.py:41`、`config_flow.py:23`, `:108` 等），而 integration/domain 是 `epson_ef`、覆盖 HB7x 全系；`Ef50` 是早期型号名，已与语义脱节。
 
 ## 关键接口契约
 
 1. **错误分类是跨层契约**：4 个异常类把"网络不可达 / 命令 FAIL / 超时 / 通用"分开（`api.py:40-61`），协调器据此区分"断电"与"待机"（`coordinator.py:44-49`），`probe_state` 还把 liveness 超时归一化为 `EpsonApiUnavailable`（`api.py:236-246`），避免"关机被当成卡死"。
 2. **协议不变量 `size = params.split(" ")` 的长度**，而非字节数（`api.py:160-171`），注释记录了这是写通路曾被 MCU 拒绝的根因。
 3. **实体表宽度契约**：`WRITABLE_SWITCHES`(6×4)、`WRITABLE_SELECTS`(4×6)、`AMBIENT_LIGHT_SWITCHES`(3×4)、`BUTTON_DEFS`(30×5) 必须与消费者解包宽度一致，否则整集成 unavailable；该事故已固化为 AST 测试（`tests/test_const_contract.py:1-15`）。
-4. **单轮询源**：所有实体读状态都取自 `coordinator.data`，不再各自发 GET（除写后确认），这是 48 个实体只产生一条轮询链的原因。
+4. **单轮询源**：所有实体读状态都取自 `coordinator.data`，不再各自发 GET（除写后确认），这是 36 个实体只产生一条轮询链的原因。
 5. **写后乐观 + 触发刷新**的统一模式：写成功即改 `coordinator.data` 并 `async_request_refresh()`（`number.py:129-133`, `select.py:110-113`, `media_player.py:159-163`）。
 
 ## 结构性风险线索（逻辑视图视角，详见 risk.md）
@@ -263,10 +263,10 @@ PLATFORMS = [
 | 编号 | 现象 | 证据 | 逻辑层影响 |
 |-|-|-|-|
 | R1 | 传输层解析型辅助方法被绕过：`api.py` 有 12 个公开方法在包内零调用者，协调器改用 `get_raw` + 手工解析 | `api.py:340`（get_raw）；`coordinator.py:63-83` 全部走 `get_raw`；零调用者含 `get_distance_mm`(`api.py:353`)、`get_light_output`(`:366`)、`get_color_gain`(`:432`)、`get_auto_focus_state`(`:634`) | 同一命令的解析逻辑存在两份（api 方法与协调器字符串键），改协议要点改两处 |
-| R2 | 实体平台绕过传输层封装直接发原始命令 | `switch.py:106`、`select.py:107`、`button.py:138` 均为 `api.request(cmd, params=...)`，而 `api.py` 同时提供 `set_*` 语义方法（如 `set_auto_contrast` `api.py:623`） | 语义校验与错误文案分裂；`geometry_*` 三个方法无人调用，命令改由 `button.py:69-82` 拼字符串 |
+| R2 | 实体平台绕过传输层封装直接发原始命令 | `switch.py:106`、`select.py:107`、`button.py:128` 均为 `api.request(cmd, params=...)`，而 `api.py` 同时提供 `set_*` 语义方法（如 `set_auto_contrast` `api.py:623`） | 语义校验与错误文案分裂；`geometry_*` 三个方法无人调用，命令改由 `button.py:69-82` 拼字符串 |
 | R3 | `hass.data` 字典为隐式契约，无类型 | 写入 `__init__.py:195-201`；读取 `binary_sensor.py:23`、`services.py:27`、`diagnostics.py:16` 共 9 处 | 键名/形状变更无编译期或静态检查保护 |
 | R4 | 身份双轨：配置流 unique_id 用 `host:port`，实体/设备身份用 serial | `config_flow.py:47-49` vs `__init__.py:60-76` | reconfigure 到新 IP 后两套标识可能分叉，仅靠 `_async_migrate_identity` 被动修复 |
-| R5 | 类名 `Ef50*` 与 domain `epson_ef`、覆盖面 HB7x 不一致（20 个类） | `coordinator.py:19`、`media_player.py:41`、`sensor.py:36` 等 | 命名不承载语义，新平台扩展时易误判适用范围 |
+| R5 | 类名 `Ef50*` 与 domain `epson_ef`、覆盖面 HB7x 不一致（19 个类） | `coordinator.py:19`、`media_player.py:41`、`sensor.py:36` 等 | 命名不承载语义，新平台扩展时易误判适用范围 |
 | R6 | 慢诊断轮询串行 30+ 次 HTTP，每次间隔 0.2s | `coordinator.py:85-101`（`await asyncio.sleep(0.2)` 位于循环内） | 单轮诊断耗时叠加在协调器更新内，最坏情况拖长刷新周期；无并发/超时预算 |
 | R7 | 未使用常量与遗留物 | `api.py:37` `_TIMEOUT` 定义后从未引用（实际超时在 `api.py:160` 另算）；`api.py:330` `get_light_time` 零调用者 | 死代码误导读者以为存在全局超时 |
 

@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-001
 description: "放弃 ADB 与 PJLink/ESC-VP21 路线，改用投影仪固件自带的 pjctl HTTP API（8080，Digest 认证）作为唯一控制通道；配置条目因此从 v1(ADB) 迁移到 v2(native)，且不再要求用户开启任何调试选项。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "选择固件原生 pjctl HTTP API 作为唯一控制通道"
 date: 2026-11-07
@@ -52,7 +52,7 @@ accepted（v2 起生效；v1 的 ADB 路径已无任何调用点，仅保留迁�
 
 ### Option A：pjctl HTTP API（选中）
 
-以 `EpsonApi` 封装 `POST /api/pjctl`，body 形如 `{"id": "...", "size": N, "params": "..."}`，Digest 认证缓存 nonce（`api.py:99-145`）。高层方法按命令族分节（`api.py:218-656`），危险命令不暴露。
+以 `EpsonApi` 封装 `POST /api/pjctl`，body 形如 `{"id": "...", "size": N, "params": "..."}`，Digest 认证缓存 nonce（`api.py:99-145`）。高层方法按命令族分节（`api.py:218-647`），危险命令不暴露。
 
 ### Option B：ADB shell
 

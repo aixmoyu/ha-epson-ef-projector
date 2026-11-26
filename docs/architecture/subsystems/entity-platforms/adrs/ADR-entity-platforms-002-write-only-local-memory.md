@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-002
 description: "无读通路的 7 个实体选择『RestoreEntity 本地记忆 + assumed_state 显式声明』而不是隐藏实体、也不是伪造真值。理由是这些能力客观上只能写不能读（GET 全 FAIL 有实测记录），隐藏会剥夺可用的控制能力，伪造则破坏信任。代价是状态随实体遥控器使用而永久漂移，且用户只能靠 assumed_state 徽标识别。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "写-only 能力以本地记忆 + assumed_state 暴露，不隐藏也不伪造"
 date: 2026-11-07
@@ -61,8 +61,8 @@ accepted（7 个实体完整适用；`media_player` 静音部分适用，见备�
 ### Option A：RestoreEntity + assumed_state
 
 三件套落地：
-1. 继承 `RestoreEntity`，`async_added_to_hass` 里从 `last_state` 恢复，且守卫 `unknown`/`unavailable`（`switch.py:158-164`、`select.py:197-201`、`number.py:433-442`）；
-2. `assumed_state` property 返回 `True`（`switch.py:166-169`、`:227-230`、`:287-290`、`select.py:203-206`、`number.py:444-447`）；
+1. 继承 `RestoreEntity`，`async_added_to_hass` 里从 `last_state` 恢复，且守卫 `unknown`/`unavailable`（`switch.py:158-164`、`select.py:141-145`、`number.py:433-442`）；
+2. `assumed_state` property 返回 `True`（`switch.py:166-169`、`:227-230`、`:287-290`、`select.py:147-150`、`number.py:444-447`）；
 3. 写成功才 `self._attr_* = value`，失败只抛错（`switch.py:171-179`）。
 
 ### Option D：静默默认值（当前静音的做法）

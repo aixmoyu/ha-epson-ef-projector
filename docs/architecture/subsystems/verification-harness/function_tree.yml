@@ -1,5 +1,5 @@
 # 模块: verification-harness —— 验证与现场分析设施（tests/ + tools/ + CI 门禁）
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 # project: "ha-epson-ef-projector"
 #
 # 本模块不是运行时域：它不参与 HA 集成加载，只在"开发者在场"时运行。
@@ -15,7 +15,7 @@
   - id: '10'
     type: directory
     name: 离线验证域
-    description: 秒级可重复、不接触真实设备的验证能力。全部落在 tests/ 4 个文件、1020 行、71 个用例上（`wc -l tests/*.py` 实测），通过伪包注入 + AST 静态解析绕开 HA。
+    description: 秒级可重复、不接触真实设备的验证能力。全部落在 tests/ 4 个文件、1 218 行、73 个用例上（`wc -l tests/*.py` 实测），通过伪包注入 + AST 静态解析绕开 HA。
     children:
     - id: '101'
       type: function
@@ -129,7 +129,7 @@
     - id: '104'
       type: function
       name: 锁定命令载荷契约
-      description: 把"`size` = params 的空格分词数，而非字节长度"这条现场分析结论固化成 32 处载荷断言（分布在 20 个用例方法中，覆盖 PayloadTests / Round4Tests / Round5Tests / Round6Tests / FocusAbsoluteTests），覆盖 KEYEVENT/待机模式/灯输出/氛围灯/序列号子索引/刷新定时器/对焦/色彩增益/几何/测试图案/自动对焦。
+      description: 把"`size` = params 的空格分词数，而非字节长度"这条现场分析结论固化成 31 处载荷断言（分布在 19 个用例方法中，覆盖 PayloadTests / Round4Tests / Round5Tests / Round6Tests / FocusAbsoluteTests），覆盖 KEYEVENT/待机模式/灯输出/氛围灯/序列号子索引/刷新定时器/对焦/色彩增益/几何/测试图案/自动对焦。
       depends_on: ["101", "102"]
       node_context:
         keywords: ["payload_size", "token_count", "command_envelope", "firmware_contract"]
@@ -210,7 +210,7 @@
           - "tests/test_const_contract.py:1-32"
           - "tests/test_const_contract.py:35-142"
           - "custom_components/epson_ef/const.py:53-92"
-          - "custom_components/epson_ef/button.py:17-83"
+          - "custom_components/epson_ef/button.py:52-73"
       children:
       - id: '10601'
         type: function_point
@@ -251,7 +251,7 @@
       - id: '10612'
         type: function_spec
         name: 拦住的事故
-        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，48 个实体全部 unavailable（`tests/test_const_contract.py:1-9`）。
+        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，36 个实体全部 unavailable（`tests/test_const_contract.py:1-9`）。
     - id: '107'
       type: function
       name: 拦截未定义名字
@@ -388,8 +388,8 @@
       - id: '30102'
         type: function_point
         name: 离线单元测试
-        description: `python -m unittest discover -s tests -v`——与本地 `discover` 完全等价，实测 Ran 64 tests OK；这是唯一能覆盖 pytest 直跑缺陷（`unittest.main()` 位置错误）的执行方式。
-        spec: "实测 64 tests / OK / rc=0"
+        description: `python -m unittest discover -s tests -v`——与本地 `discover` 完全等价，实测 Ran 73 tests OK；这是唯一能覆盖 pytest 直跑缺陷（`unittest.main()` 位置错误）的执行方式。
+        spec: "实测 73 tests / OK / rc=0"
         input: tests/ 4 文件
         process: unittest discover 导入全部 4 模块
         output: 通过/失败

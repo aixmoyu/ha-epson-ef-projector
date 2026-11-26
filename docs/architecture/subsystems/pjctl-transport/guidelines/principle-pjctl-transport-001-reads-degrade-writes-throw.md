@@ -8,7 +8,7 @@ id: principle-pjctl-transport-001-reads-degrade-writes-throw
 
 description: "传输层的读方法与写方法遵循有意不对称的失败契约：读（`get_*`）在命令于当前电源态不可用时返回 None，绝不抛错；写（`set_*`/`send_*`/`geometry_*`）失败必须上抛。这条不对称是整个集成降级逻辑（carry-forward、乐观状态、错误提示）成立的前提。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 principle_scope: module
 

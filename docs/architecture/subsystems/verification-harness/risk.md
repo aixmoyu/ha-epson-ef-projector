@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "verification-harness 的风险全部集中在『保障本身的可靠性』上：门禁范围不含 tools/ 与 HA 装配层，测试结构缺陷让直跑少跑 11 个用例，pyflakes 缺失时静默降级，真机脚本已有 1 个必崩的 NameError 且退出码不表达结论。全局级风险见 architecture_views/risk.md，本文件只记录本模块 code_mapping 覆盖的故障域与边界依赖。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 模块架构风险分析
@@ -35,7 +35,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 
 | 瓶颈 ID | 位置（本模块内） | 当前指标 | 阈值 | 触发条件 | 影响 | 突破方案 | 预计工作量 |
 |-|-|-|-|-|-|-|-|
-| VH-P01 | 全量离线套件 | **0.177–0.20s**（实测 `Ran 64 tests in 0.177s` / `71 passed in 0.20s`） | 无实际压力 | — | 无 | 不适用 | — |
+| VH-P01 | 全量离线套件 | **0.18–0.19s**（实测 `Ran 73 tests in 0.177s` / `73 passed in 0.19s`） | 无实际压力 | — | 无 | 不适用 | — |
 | VH-P02 | AST 契约扫描 | 4 张表 × 14 个生产文件，3 用例 0.085s（实测） | 文件数增长到数百时会线性变慢 | 生产包文件数增长 | 仍可接受 | 缓存 `ast.parse` 结果（当前每次调用都重新 parse，`_parse()` 无缓存，`tests/test_const_contract.py:35-36`） | 0.5 人日 |
 
 > 注：`VH-P02` 的"无缓存"实测证据：`_parse(name)` 每次 `ast.parse((_PKG_DIR / TABLE_SOURCES[name]).read_text())`（`:36`），而 `test_tables_are_non_empty_and_rectangular` 对同一表调用两次 `_parse`（`:94` 的 `_table_arity` 与 `:95` 的 `ast.walk`）。

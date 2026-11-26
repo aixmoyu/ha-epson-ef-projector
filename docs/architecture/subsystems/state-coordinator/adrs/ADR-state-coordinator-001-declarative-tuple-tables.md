@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-001
 description: 用「表 + 通用实体类」承载 10 个可写设置，而不是为每个设置写一个实体类。表是纯数据和定宽元组，一处声明、四处解包（实体创建 ×2、轮询回读 ×2），代价是宽度成为跨文件契约，必须配 AST 级静态护栏。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "声明式元组表驱动可写设置，而非逐实体类"
 date: 2026-11-07
@@ -23,7 +23,7 @@ accepted
 
 ## 1. 背景
 
-**业务背景**：集成要暴露 10 个可写设置（6 个 0/1 开关 + 4 个多档选择），另有 3 个氛围灯开关与 4 个光效模式、22 个按钮。这些设置共享完全同构的读写模式：读一个 `CONFIG_GET_*` 拿当前值，写一个 `CONFIG_SET_*` 设新值，值与值之间的差别只是命令号和档位。
+**业务背景**：集成要暴露 10 个可写设置（6 个 0/1 开关 + 4 个多档选择），另有 3 个氛围灯开关与 4 个光效模式、10 个按钮。这些设置共享完全同构的读写模式：读一个 `CONFIG_GET_*` 拿当前值，写一个 `CONFIG_SET_*` 设新值，值与值之间的差别只是命令号和档位。
 
 **技术背景**：设置在两个时机被消费——**实体创建时**（要构造实体、算 `unique_id`、定 options）与**轮询回读时**（要拿当前值填 `settings` 字典）。这两处位于不同模块（`switch.py`/`select.py` vs `coordinator.py`），且必须对「有哪些设置」保持完全一致的认知。
 
@@ -92,6 +92,6 @@ accepted
 
 ## 备注
 
-- **已知缺口**：`AMBIENT_MODE_OPTIONS`（`const.py:158-163`，4×2）**不在** `TABLE_SOURCES`（`tests/test_const_contract.py:27-32`）里。它被 `select.py:180` 的列表推导与 `:187` 的 `dict()` 消费，不产生元组解包 AST 节点，因此护栏看不到它。见 risk.md R-SC-06。
+- **已知缺口**：`AMBIENT_MODE_OPTIONS`（`const.py:158-163`，4×2）**不在** `TABLE_SOURCES`（`tests/test_const_contract.py:27-32`）里。它被 `select.py:124` 的列表推导与 `:187` 的 `dict()` 消费，不产生元组解包 AST 节点，因此护栏看不到它。见 risk.md R-SC-06。
 - **已知缺口**：`coordinator.py:63` 的 `probes` 表（17×3）也不在护栏内，且其类型标注写成了 4 元组（与实际 3 元组不符）。
 - **历史代价**：3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组而 `coordinator.py` 未跟改，真机部署后每次慢轮抛 `ValueError`，全集成 unavailable（`tests/test_const_contract.py:1-9`）。这个事故正是护栏的由来，也是「Option A 必须有护栏」这一条件的实证。

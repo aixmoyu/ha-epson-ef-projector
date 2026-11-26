@@ -1,6 +1,6 @@
 # entity-platforms 模块功能树
 # project: ha-epson-ef-projector
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 # scope: custom_components/epson_ef/{media_player,sensor,select,binary_sensor,button,switch,number}.py
 # 说明: 叶子为 function(业务能力), 二级 directory 按平台类别组织; 类名/方法名不入树。
 
@@ -59,7 +59,7 @@
       keywords: ["volume_step", "keyevent", "no_absolute_volume"]
       code_mapping:
         - "custom_components/epson_ef/media_player.py:201-205"
-        - "custom_components/epson_ef/const.py:204-205"
+        - "custom_components/epson_ef/const.py:187-188"
     children:
     - id: '10301'
       type: function_point
@@ -109,7 +109,7 @@
       keywords: ["media_keys", "play_pause", "keyevent_injection"]
       code_mapping:
         - "custom_components/epson_ef/media_player.py:218-228"
-        - "custom_components/epson_ef/const.py:207-211"
+        - "custom_components/epson_ef/const.py:190-194"
     children:
     - id: '10501'
       type: function_point
@@ -122,73 +122,43 @@
 - id: '2'
   type: directory
   name: 遥控与系统导航
-  description: 以按钮为载体的遥控键注入与固件功能唤起；22 个按钮全部由 BUTTON_DEFS 表驱动，分为按键注入、功能触发、几何步进三类。
+  description: 以按钮为载体的遥控键注入与几何步进；10 个按钮全部由 BUTTON_DEFS 表驱动，只保留真机上可直接观察、且可用反向操作撤销的动作。会重写几何校正或标定状态的命令在 0.0.4 中整体移除，见 button.py:17-51 的排除清单。
   children:
   - id: '201'
     type: function
     name: 导航投影仪菜单
-    description: 注入主页/返回/菜单/信号源四个 Android 按键，用于在投影仪系统界面内导航。
+    description: 注入主页/返回/菜单三个 Android 按键，用于在投影仪系统界面内导航；另提供一次单次自动对焦。
     depends_on: []
     node_context:
-      keywords: ["remote_keys", "keyevent", "menu_navigation"]
+      keywords: ["remote_keys", "keyevent", "menu_navigation", "auto_focus"]
       code_mapping:
-        - "custom_components/epson_ef/button.py:18-22"
-        - "custom_components/epson_ef/button.py:136-142"
+        - "custom_components/epson_ef/button.py:54-58"
+        - "custom_components/epson_ef/button.py:122-131"
     children:
     - id: '20101'
       type: function_point
       name: 按键码注入
-      description: 通过 NOTIFY_KEYEVENT 注入 3(主页)/4(返回)/82(菜单)/243(HDMI1)。
-      constraint: 243 为实验性信号源切换，固件可能忽略；错误以按钮翻译键回显
-      process: api.request("NOTIFY_KEYEVENT", params="3|4|82|243")
+      description: 通过 NOTIFY_KEYEVENT 注入 3(主页)/4(返回)/82(菜单)。
+      constraint: 信号源切换键 243 未在真机确认，0.0.3 起不暴露；错误以按钮翻译键回显
+      process: api.request("NOTIFY_KEYEVENT", params="3|4|82")
       output: 一次按键事件
-
-  - id: '202'
-    type: function
-    name: 打开固件功能面板
-    description: 唤起投影仪固件内置的功能界面/模式（浮窗设置、手动对焦、手动梯形校正、画面位移、画面缩放、蓝牙音箱模式、错误警告、无图案对焦）。
-    depends_on: []
-    node_context:
-      keywords: ["notify_app", "firmware_panel", "feature_trigger"]
-      code_mapping:
-        - "custom_components/epson_ef/button.py:26-47"
-    children:
-    - id: '20201'
+    - id: '20102'
       type: function_point
-      name: 固件面板唤起
-      description: 通过 NOTIFY_APP_* 通知唤起对应固件界面，效果以机身行为为准。
-      constraint: 仅代表"通知已发送"，不代表界面已打开
-      process: api.request("NOTIFY_APP_FLOATING_SETTINGS" 等, params=None)
-      output: 一次固件通知
-
-  - id: '203'
-    type: function
-    name: 触发一键校正与校准
-    description: 触发自动对焦、自动梯形校正、避障校正、墙面颜色自适应、面板对齐、屏幕适配、相机标定、重力传感器标定、智能护眼等一次性固件流程。
-    depends_on: []
-    node_context:
-      keywords: ["auto_correction", "calibration", "one_shot"]
-      code_mapping:
-        - "custom_components/epson_ef/button.py:23-25"
-        - "custom_components/epson_ef/button.py:48-64"
-    children:
-    - id: '20301'
-      type: function_point
-      name: 校正流程触发
-      description: 发送 NOTIFY_AUTO_CORRECTION / NOTIFY_OBSTACLE_AVOIDANCE 等通知，其中两条带固定参数 "1 1"（真机实测 SUCCESS）。
-      spec: 带参调用点 params="1 1"（size=2）
-      process: api.request("NOTIFY_AUTO_CORRECTION", params="1 1")
-      output: 一次校正动作
+      name: 单次自动对焦
+      description: 发送 NOTIFY_AUTO_FOCUS，让镜头执行一次对焦；结果肉眼可观察，可重复执行。
+      constraint: 不写标定或几何状态，也不回读对焦结果
+      process: api.request("NOTIFY_AUTO_FOCUS", params=None)
+      output: 一次镜头对焦
 
   - id: '204'
     type: function
     name: 步进调整画面几何
-    description: 以固定步长调整数字变焦与画面位移（CONFIG_SET_QC 子命令 1/2），每个按钮一次步进。
+    description: 以固定步长调整数字变焦与画面位移（CONFIG_SET_QC 子命令 1/2），每个按钮一次步进；正反向互可撤销。
     depends_on: []
     node_context:
       keywords: ["zoom_step", "shift_step", "set_qc"]
       code_mapping:
-        - "custom_components/epson_ef/button.py:68-79"
+        - "custom_components/epson_ef/button.py:61-72"
         - "custom_components/epson_ef/const.py:176-177"
     children:
     - id: '20401'
@@ -204,25 +174,6 @@
       description: 上/下/左/右各一步，步长 QC_SHIFT_STEP=13，参数为 "2 dx dy"。
       process: api.request("CONFIG_SET_QC", params="2 0 -13" 等)
       output: 画面平移一步
-
-  - id: '205'
-    type: function
-    name: 重置画面几何校正
-    description: 一键清除变焦/位移/梯形等全部几何校正（CONFIG_SET_QC 子命令 5），作为几何误操作的逃生口。
-    depends_on: []
-    node_context:
-      keywords: ["geometry_reset", "reset_corrections", "escape_hatch"]
-      code_mapping:
-        - "custom_components/epson_ef/button.py:80-82"
-        - "custom_components/epson_ef/api.py:610-618"
-    children:
-    - id: '20501'
-      type: function_point
-      name: 清除全部校正
-      description: 发送 size=1 的 "5" 子命令重置全部几何校正；之后需重新触发自动校正才能重建梯形。
-      constraint: 破坏性动作，无二次确认、无回滚
-      process: api.request("CONFIG_SET_QC", params="5")
-      output: 几何校正归零
 
 - id: '3'
   type: directory
@@ -421,7 +372,7 @@
     node_context:
       keywords: ["test_pattern", "agpattern", "factory_pattern"]
       code_mapping:
-        - "custom_components/epson_ef/switch.py:249-306"
+        - "custom_components/epson_ef/switch.py:249-304"
         - "custom_components/epson_ef/const.py:179-183"
         - "custom_components/epson_ef/api.py:420-430"
     children:
@@ -469,7 +420,7 @@
     node_context:
       keywords: ["ambient_brightness", "ui_scale", "write_only"]
       code_mapping:
-        - "custom_components/epson_ef/number.py:399-458"
+        - "custom_components/epson_ef/number.py:399-452"
         - "custom_components/epson_ef/const.py:152-156"
         - "custom_components/epson_ef/api.py:400-409"
     children:

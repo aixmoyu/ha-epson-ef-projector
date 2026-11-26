@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 模块功能树 — state-coordinator
 # project: ha-epson-ef-projector
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 # 范围: custom_components/epson_ef/coordinator.py (154) + const.py (222) = 376 行
 # 结构: 顶层节点列表 (R1); directory → function → point/spec/constraint
 # ════════════════════════════════════════════════════════════════════════════
@@ -88,7 +88,7 @@
         type: function_point
         name: 每十二轮刷新
         description: 稳态下每 12 个轮询周期执行一次慢段，默认 15s 间隔即约 180s 一次。
-        spec: "`DIAGNOSTIC_EVERY_N_POLLS = 12`（const.py:222）"
+        spec: "`DIAGNOSTIC_EVERY_N_POLLS = 12`（const.py:199）"
         constraint: 慢值最大陈旧度 = 12 × poll_interval，与 poll_interval 强耦合。
         input: `_poll_count % 12 == 0`
         process: 进入慢段
@@ -126,7 +126,7 @@
       node_context:
         keywords: ["carry_forward", "snapshot_assembly", "stale_data", "data_contract"]
         code_mapping:
-          - "custom_components/epson_ef/coordinator.py:39-39"
+          - "custom_components/epson_ef/coordinator.py:39"
           - "custom_components/epson_ef/coordinator.py:134-154"
       children:
       - id: '10301'
@@ -323,13 +323,13 @@
         keywords: ["keycode_map", "standby_semantics", "bidirectional_mapping"]
         code_mapping:
           - "custom_components/epson_ef/const.py:21-45"
-          - "custom_components/epson_ef/const.py:194-219"
+          - "custom_components/epson_ef/const.py:177-199"
       children:
       - id: '20301'
         type: function_point
         name: 映射遥控按键码
         description: 23 个命名按键 → Android keycode，供 `epson_ef.send_key` 服务按名字发键。
-        spec: "`KEYCODES: dict[str,int]` 23 项（const.py:195-219），命令号由 `KEYCODE_SEND = 'NOTIFY_KEYEVENT'` 指定（const.py:21）"
+        spec: "`KEYCODES: dict[str,int]` 23 项（const.py:178-199），命令号由 `KEYCODE_SEND = 'NOTIFY_KEYEVENT'` 指定（const.py:21）"
         constraint: 唯一生产消费者是 services.py:49；media_player.py 与 button.py 全部用字面量绕过（见 risk.md）。
         input: 服务调用的 key 字符串
         process: "`KEYCODES.get(key)`，未命中则回退把纯数字当 keycode（services.py:49-53）"

@@ -1,8 +1,8 @@
 ---
 project: "ha-epson-ef-projector"
 type: risk
-description: entity-platforms 的风险集中在四处：①写通道分裂（40 个实体绕过 api.py 语义方法直接拼命令串），使同一份协议知识存在两份编码；②乐观写回填共享字典，无锁无版本，三通道增益与对焦闭环在并发下会丢更新/交错驱动；③无读通路的 7 个实体只靠本地记忆，静音甚至未声明 assumed_state，用户无法识别假设值；④unique_id 四套约定 + settings 扁平键 + legacy 清理表三者叠成的命名耦合，改名或迁移任一处都可能删掉活着的实体。跨模块级风险（固件单线程挂起、慢轮超时预算）见 architecture_views/risk.md，本文件仅在边界处引用。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+description: entity-platforms 的风险集中在四处：①写通道分裂（19 个实体绕过 api.py 语义方法直接拼命令串），使同一份协议知识存在两份编码；②乐观写回填共享字典，无锁无版本，三通道增益与对焦闭环在并发下会丢更新/交错驱动；③无读通路的 7 个实体只靠本地记忆，静音甚至未声明 assumed_state，用户无法识别假设值；④unique_id 四套约定 + settings 扁平键 + legacy 清理表三者叠成的命名耦合，改名或迁移任一处都可能删掉活着的实体。跨模块级风险（固件单线程挂起、慢轮超时预算）见 architecture_views/risk.md，本文件仅在边界处引用。
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 模块架构风险分析
@@ -20,17 +20,17 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 |R-EP-03|取消路径上马达可能不停|HA 关停/任务被二次取消|对焦马达（可能顶到限位）|低|高|P1|`try/finally` 保证发 `OFF`（`api.py:573-582`），但 `await focus_move_stop()` 未 `asyncio.shield`；finally 内 `sleep` 被取消时 OFF 请求本身也可能被取消|`asyncio.shield(focus_move_stop())`|部分缓解|
 |R-EP-04|共享字典就地 mutate|实体写与协调器 merge 交错（事件循环内仍是同一 dict 对象）|全部读 `settings`/`diag` 的实体|中|中|P1|无版本号、无快照替换；**18 个实体实例经 8 处代码**直接改 `self.coordinator.data`（`number.py:129/216/297/392`、`switch.py:109`、`select.py:110/162`、`media_player.py:162`）|实体写改为"复制后整体替换"，或协调器改用不可变快照|未缓解|
 |R-EP-05|电源锁只覆盖单一实体实例|`services.send_key(key="POWER")` 或 `raw_request` 与本实体 turn_on/off 并发|电源状态与设备真值分叉（盲 toggle 被翻两次）|中|中|P1|锁在 `__init__` 内创建（`media_player.py:73`），作用域=本实例；`services.py:48-54` 与 `services.py:64` 不经过它|把锁上提到 entry 级共享对象（`hass.data[DOMAIN][entry_id]["power_lock"]`）|未缓解|
-|R-EP-06|按钮实体永不 unavailable，离线点击得到通用错误|设备断电时用户点 22 个按钮中任意一个|`Ef50Button` ×22；错误文案为 `按钮 {key} 执行失败: {err}`，未区分"不可达"与"命令被拒"|高|低|P2|有意设计（`button.py:132-134` 注释：保留按钮以便给出明确错误）|文案按 `EpsonApiUnavailable`/`CommandFailed` 分类，与 `media_player.py:142-149` 对齐|接受|
+|R-EP-06|按钮实体永不 unavailable，离线点击得到通用错误|设备断电时用户点 10 个按钮中任意一个|`Ef50Button` ×10；错误文案为 `按钮 {key} 执行失败: {err}`，未区分"不可达"与"命令被拒"|高|低|P2|有意设计（`button.py:124-126` 注释：保留按钮以便给出明确错误）|文案按 `EpsonApiUnavailable`/`CommandFailed` 分类，与 `media_player.py:142-149` 对齐|接受|
 |R-EP-07|写-only 实体状态漂移且无提示（静音）|用户用实体遥控器静音/取消静音|`Ef50MediaPlayer.is_volume_muted`；界面显示与设备相反，且**没有** `assumed_state` 徽标|中|中|P1|仅 `RestoreEntity` 本地记忆（`media_player.py:75-81`）+ 目标态比对去重（`:212-213`）|增加 `assumed_state` 返回 True（与氛围灯三件套一致，`switch.py:166-169`）；或在属性里加 `mute_assumed: true`|未缓解|
 
 ## 跨模块依赖风险
 
 |风险 ID|依赖方向|依赖对象|失效/漂移场景|影响|当前保障|改进方案|
 |-|-|-|-|-|-|-|
-|R-EP-08|本模块→state-coordinator|`coordinator.data` 的 8 个键（`state`/`light_hours`/`light_extra`/`light_measured_at`/`settings`/`diag`/`product`/`standby_mode`）|协调器重命名或删除任一键：实体静默显示 None / 属性消失（**无 KeyError、无日志**，因为全部走 `.get()`）|48 实体中 45 个受影响|无 schema 声明、无类型定义、无契约测试；键名以字符串字面量散落在 7 个文件|在 `const.py` 定义 `DATA_KEY_*` 常量，或加一个 TypedDict + 静态检查|
+|R-EP-08|本模块→state-coordinator|`coordinator.data` 的 8 个键（`state`/`light_hours`/`light_extra`/`light_measured_at`/`settings`/`diag`/`product`/`standby_mode`）|协调器重命名或删除任一键：实体静默显示 None / 属性消失（**无 KeyError、无日志**，因为全部走 `.get()`）|36 实体中 33 个受影响|无 schema 声明、无类型定义、无契约测试；键名以字符串字面量散落在 7 个文件|在 `const.py` 定义 `DATA_KEY_*` 常量，或加一个 TypedDict + 静态检查|
 |R-EP-09|本模块→state-coordinator|`settings` 是**扁平字典，键 = suffix**|两张表的 suffix 若出现交集，后写者静默覆盖前者的值，表现为两个实体联动|可写设置类实体（15 个）|当前 15 个 suffix 实测互不重复（`const.py:53-66` vs `:75-92` vs `:138-142`）；但**无测试守护**这一点（`test_const_contract.py` 只查宽度，不查跨表后缀唯一性）|把"跨表 suffix 唯一"加入 AST 测试|
 |R-EP-10|本模块→state-coordinator|`diag` 与 `settings` 有 6 个同名键（`vmute`/`color_temp`/`dynamic_contrast`/`movement_sensor`/`smart_eye_protection`/`startup_correction`）|慢轮对同一 GET 命令发两次请求（`coordinator.py:63-83` 与 `:92-101`），每次诊断轮多 6 次 HTTP；两份副本可能不同步（一份成功一份失败）|慢轮时长、`media_player` 属性 vs 开关值不一致|无去重|诊断白名单剔除与设置表重复的项，`media_player` 属性改读 `settings`|
-|R-EP-11|本模块→pjctl-transport|`request(cmd_id, params)` 裸接口|命令名/参数格式变更时，`api.py` 的语义方法会同步改，而 40 个实体的裸串不会——两套编码各自漂移|`button` 30 + `switch` 6 + `select` 4 = 40 实体|`const.py` 提供了命令名常量，但 `BUTTON_DEFS` 里的命令串仍是字面量（`button.py:17-83`）|把 `BUTTON_DEFS` 的命令列改为引用 `const.py` 常量，或全部改走 `api.py` 语义方法|
+|R-EP-11|本模块→pjctl-transport|`request(cmd_id, params)` 裸接口|命令名/参数格式变更时，`api.py` 的语义方法会同步改，而 19 个实体的裸串不会——两套编码各自漂移|`button` 10 + `switch` 6 + `select` 3 = 19 实体|`const.py` 提供了命令名常量，但 `BUTTON_DEFS` 里的命令串仍是字面量（`button.py:52-73`）|把 `BUTTON_DEFS` 的命令列改为引用 `const.py` 常量，或全部改走 `api.py` 语义方法|
 |R-EP-12|本模块→entry-core|`hass.data[DOMAIN][entry_id]["base_id"]` / `["coordinator"]`|entry 卸载期实体仍持有 coordinator 引用并调用 `async_request_refresh`（写后刷新时机与卸载竞态）|卸载瞬间的告警/异常日志|`async_unload_entry` 先卸平台再 pop `hass.data`（`__init__.py:213-220`）|可接受；`async_request_refresh` 在 coordinator 已停时由 HA 内部吞掉|
 
 ## 模块内性能瓶颈风险
@@ -72,13 +72,13 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 |-|-|-|-|-|-|-|-|-|
 |R-EP-19|平台 setup 期表解包异常|`switch`/`select`/`button` 的表驱动推导|若某张表新增列而解包点未改 → `ValueError` → **该平台 setup 失败**（HA 记 "Error while setting up platform"，该平台全部实体消失）|该平台实体全部创建|否（可回滚版本）|`tests/test_const_contract.py` 用 AST 比对 4 张表宽度与全部解包点（含推导式）|修版本；实体注册表保留 unique_id，重启后自动复现|一次 HA 重启|
 |R-EP-20|单实体写失败|任一词写实体|该实体上抛 `HomeAssistantError`，状态不翻转（`switch.py:174-177` 等）|单实体降级，其余不受影响|否|各实体独立 try/except；失败不回填缓存|用户重试|即时|
-|R-EP-21|协调器不可用|全部 48 实体|46 个随 `last_update_success` 变 unavailable；`binary_sensor` 与 `button` 恒可用（`binary_sensor.py:50-52`、`button.py:126-128`）|离线可诊断|是（单一轮询源）|无第二数据源|HA 自动重试轮询；`binary_sensor` 报 off|≤1 个轮询周期|
+|R-EP-21|协调器不可用|全部 36 实体|25 个随 `last_update_success` 变 unavailable；`binary_sensor` 与 `button` 恒可用（`binary_sensor.py:50-52`、`button.py:126-128`）|离线可诊断|是（单一轮询源）|无第二数据源|HA 自动重试轮询；`binary_sensor` 报 off|≤1 个轮询周期|
 
 ## 模块内技术债务
 
 |区域（本模块）|债务类型|原因|严重度|偿还建议|
 |-|-|-|-|-|
-|写通道分裂（40 实体裸串 vs 15 实体语义方法）|设计债|历史上"先打通命令、后补封装"，封装补齐后实体层未回迁；`api.py` 14 个公开方法在 `custom_components/` 内零生产调用者（其中 12 个连 api.py 内部也不调用）|严重|把 `BUTTON_DEFS` 与 `WRITABLE_*` 的写路径改走 `api.py` 语义方法，删除裸串分支|
+|写通道分裂（19 实体裸串 vs 14 实体语义方法）|设计债|历史上"先打通命令、后补封装"，封装补齐后实体层未回迁；`api.py` 14 个公开方法在 `custom_components/` 内零生产调用者（其中 12 个连 api.py 内部也不调用）|严重|把 `BUTTON_DEFS` 与 `WRITABLE_*` 的写路径改走 `api.py` 语义方法，删除裸串分支|
 |`except Exception` 宽捕获（`switch.py:107`、`select.py:108`）|代码债|推测为"担心固件抛出非 `EpsonApiError`"，但会把编程错误包装成"写入失败"|中等|改回 `except EpsonApiError`；确需兜底则单独 `except Exception` 并 `_LOGGER.exception` 留栈|
 |16 处 `DeviceInfo` 重复构造（简报口径 11 处，实测构造点 16）|代码债|每类各写一遍，`identifiers/name/manufacturer/model` 四个字段逐字重复；`model` 回退文案硬编码 `"Epson EF Projector"` 而非引用 `DEFAULT_NAME`|中等|抽 `_device_info(coordinator, base_id, name)` 帮助函数（放 `const.py` 之外的新 `entity.py`，避免污染契约层）|
 |15 处 `self._entry = entry` 零读取|代码债|模板复制|轻微|删除赋值；`Ef50ConfigSwitch`/`Ef50ConfigSelect` 的 `_get_cmd` 同理|

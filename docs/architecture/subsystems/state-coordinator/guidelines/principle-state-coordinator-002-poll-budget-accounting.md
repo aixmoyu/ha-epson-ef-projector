@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-002
 description: 新增任何轮询读命令前，必须先算清它落在快轮还是慢轮、待机时是否必然失败、以及它给稳态请求量增加多少。读命令只能进慢轮（除非电源态类信息），且必须放在 if state == "on" 块内，除非该值在待机态也可读。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---
@@ -20,7 +20,7 @@ principle_scope: module
 | 快轮（普通待机） | **2** 或 **3** | 唤醒探针 FAIL 且 `verify=True` 时重试一次 | `api.py:252-264` |
 | 慢轮（唤醒） | **35** | `2(probe) + 17(diag) + 6(switch) + 4(select) + 6(post)` | `coordinator.py:43`, `:63-83`, `:92`, `:97`, `:102`, `:106`, `:110`, `:113`, `:121`, `:130` |
 | 慢轮（待机） | 2–3 | 引擎段整块跳过（`:61`），仅 `probe` + `standby_mode` | `coordinator.py:61`, `:130` |
-| 稳态平均 | **≈4.75 条/轮** | `2 + 33/12` | `const.py:222` |
+| 稳态平均 | **≈4.75 条/轮** | `2 + 33/12` | `const.py:199` |
 
 慢轮的 6 条「后置命令」是：`light_output`（`:102`）、`refresh_timer`（`:106`）、`focus_range`（`:110`）、`focus_position`（`:113`）、`product`（`:121`）、`standby_mode`（`:130`）。
 

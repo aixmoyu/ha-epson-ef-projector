@@ -6,13 +6,13 @@ type: risk
 
 description: "本模块范围（custom_components/epson_ef/api.py）的架构风险：传输层被绕过、34 个命令方法中 12 个在包内零调用者、对焦闭环的无锁与返回语义、认证状态的并发共享、session 生命周期缺口、等待语义非硬上限、明文 HTTP 与硬编码固件凭据。全局级风险见 architecture_views/risk.md，本文件只记录本模块 code_mapping 覆盖的故障域。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 ---
 
 # 模块架构风险分析
 
-> 故障域限定于 `custom_components/epson_ef/api.py`（656 行）及其直接消费的 `const.py` 常量（`api.py:16-33` 的 16 个 import 名）。
+> 故障域限定于 `custom_components/epson_ef/api.py`（647 行）及其直接消费的 `const.py` 常量（`api.py:16-33` 的 16 个 import 名）。
 > 编号前缀 `R-T`（T = transport）以避免与 `architecture_views/risk.md` 的 `R-01..R-NN` 冲突；重叠条目只在边界处引用，不重复展开。
 > 概率/严重度取值：高/中/低；优先级 P0 阻断发布 / P1 应尽快 / P2 排期 / P3 观察。
 
@@ -27,7 +27,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 |R-T05|session 生命周期三处缺口|卸载后迟到协程 / 外部 session 被关闭|连接泄漏、借用外部 session 时反而接管所有权|低|低|**P3**|`close()` 仅在有所有权时关闭并把 `_session=None`（`api.py:87-90`）；但 `_owns_session` 不复位（`:88-90`）、`_ensure_session` 无 `_closed` 标志会静默重建（`:93-97`）、外部 session 被关后会被替换并夺权（`:94-96`）|加 `_closed` 布尔，关闭后 `_ensure_session` 直接抛错；`close()` 复位 `_owns_session`|开放|
 |R-T06|`wait_for_state` 的超时不是硬上限|单次 `probe_state` 本身耗时超过 `timeout_s`|电源确认实际耗时远超预算|中|中|**P1**|检查顺序是"先探测、后比 deadline"（`api.py:284-293`）；`probe_state(verify=False)` 最坏 = 10s（liveness）+ 5s（引擎查询）= 15s，而调用方预算 `_POWER_CONFIRM_TIMEOUT=10.0`（`media_player.py:27`）|改用 `asyncio.timeout(timeout_s)` 包住整个循环，或把 deadline 检查提前到循环入口|开放|
 |R-T07|明文 HTTP + 固件硬编码凭据|同网段嗅探 / 仓库公开|凭据与全部命令可被旁路重放|中|中|**P2**|URL 硬编码 `http://`（`api.py:79`）；凭据为公开常量（`const.py:15-19`），注释明确"baked into projector firmware, not tied to a particular installation"；Digest-MD5 本身无信道保护|无代码内缓解（固件只暴露 HTTP）；应在文档声明"投影仪必须置于可信内网"|接受|
-|R-T08|传输层可被绕过（门面有后门）|任意调用方直接 `api.request(cmd, params)`|危险命令与 size 协议全部可由上层拼错|高|中|**P1**|`request` 是公开方法，包内被 4 处直接调用：`button.py:138`、`select.py:107`、`switch.py:106`、`services.py:64`；`tools/` 26 个探测脚本与 `tests/` 亦直调|把 `request` 降为 `_request`，为需要透传的场景保留一个显式的 `raw_request()` 并加命令白名单|开放|
+|R-T08|传输层可被绕过（门面有后门）|任意调用方直接 `api.request(cmd, params)`|危险命令与 size 协议全部可由上层拼错|高|中|**P1**|`request` 是公开方法，包内被 4 处直接调用：`button.py:128`、`select.py:107`、`switch.py:106`、`services.py:64`；`tools/` 26 个探测脚本与 `tests/` 亦直调|把 `request` 降为 `_request`，为需要透传的场景保留一个显式的 `raw_request()` 并加命令白名单|开放|
 |R-T09|危险命令仅靠"不实现"来屏蔽|通过 `services.raw_request` 或任何新代码直接发参数|`SET_REFRESH "1"`（立即刷新并关机）、`SET_AMBIENT_LIGHT "255"`（恢复出厂）、光效槽 11、`GET_ESCVP` 工厂写命令|中|高|**P1**|模块内确实不产生这些参数：`set_refresh_timer` 只发 `"0 <h>"`（`api.py:481-488`）、氛围灯三方法只产生 3/4/5/9 号参数（`api.py:387-418`）、测试图案仅 `TEST_PATTERN_ON/OFF`（`api.py:428-430`, `const.py:182-183`）；`services.py:64` 无任何校验把任意 `id/params` 直送固件|在 `request()` 内加危险参数黑名单（至少 `SET_REFRESH`+`params=="1"`、`SET_AMBIENT_LIGHT`+`params=="255"`），命中即抛错|开放|
 |R-T10|`probe_state` verify 分支的重试是阻塞式|待机态每次轮询都命中 FAIL|每轮多付 1.5s + 一条 5s 超时查询|中|低|**P3**|`probe_state()` 默认 `verify=True`（`api.py:222`），协调器调用未传参（`coordinator.py:43`），故每 15s 轮询都可能多花 1.5s+5s|协调器改为 `verify=False`，仅在电源切换后由 `wait_for_state` 做确认|开放|
 |R-T11|`get_raw` 无超时参数，挂起命令会拖满预算|调用未映射子索引或深待机|单条命令占用 10s（默认）且无法缩短|中|低|**P3**|docstring 明示"some hang the HTTP thread… callers must apply a timeout"（`api.py:343-346`），但签名只有 `cmd_id, params`，无 `timeout`（`:340`）；实际缓解靠 `coordinator.py` 的 0.2s 间隔而非超时|给 `get_raw` 增加 `timeout` 透传参数（`request` 已支持）|开放|
@@ -88,7 +88,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 
 |区域（本模块）|债务类型|原因|严重度|偿还建议|
 |-|-|-|-|-|
-|12 个零调用者命令方法（`api.py:295-656`）|设计债|现场分析阶段"先打通再接线"，平台层用 `request` 直调绕过（`button.py:138` 等），方法被留在原地|严重|二选一：平台层改走语义方法，或删除并保留测试为"能力记录"|
+|12 个零调用者命令方法（`api.py:295-647`）|设计债|现场分析阶段"先打通再接线"，平台层用 `request` 直调绕过（`button.py:128` 等），方法被留在原地|严重|二选一：平台层改走语义方法，或删除并保留测试为"能力记录"|
 |`request` 公开且被包内 4 处直调|设计债|早期只有 `request`，后来才长出语义方法，历史调用点未回收|严重|降级为 `_request` + 显式 `raw_request` 白名单，见 R-T08|
 |危险变体靠"不实现"而非校验（`api.py:481-488`, `:411-418`）|设计债|现场分析方法论要求"不暴露未验证能力"，但缺少运行时闸门|中等|在 `request` 内加参数黑名单（R-T09）|
 |`_TIMEOUT` 死常量（`api.py:37`）|代码债|重构遗留，默认值被内联成字面量 `10.0`（`api.py:160`）|轻微|删除或改为被引用的 `_DEFAULT_TIMEOUT`|

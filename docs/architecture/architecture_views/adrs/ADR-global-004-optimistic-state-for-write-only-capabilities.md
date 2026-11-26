@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-004
 description: "对固件没有读通路的能力（氛围灯、自动对比度、测试图案、静音）采用『乐观写入 + RestoreEntity 本地记忆 + assumed_state=True』三件套，而不是隐藏实体或伪造读值。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "无读通路能力采用乐观状态 + assumed_state 显式标注"
 date: 2026-11-07
@@ -53,9 +53,9 @@ accepted
 
 三件套的具体落点：
 
-- `assumed_state = True`：`switch.py:166-169`（氛围灯）、`switch.py:228-230`（自动对比度）、`switch.py:288-290`（测试图案）、`number.py:444-447`（氛围灯亮度）、`select.py:203-206`（氛围灯模式）。
-- `RestoreEntity`：`async_added_to_hass()` 里读 `async_get_last_state()`，过滤 `unknown`/`unavailable`（`switch.py:158-164`、`number.py:433-442`、`select.py:197-201`）。
-- **写成功才翻值**：失败抛 `HomeAssistantError` 且不修改本地状态（`switch.py:171-179`、`number.py:449-458`、`select.py:208-219`）。
+- `assumed_state = True`：`switch.py:166-169`（氛围灯）、`switch.py:228-230`（自动对比度）、`switch.py:288-290`（测试图案）、`number.py:444-447`（氛围灯亮度）、`select.py:147-150`（氛围灯模式）。
+- `RestoreEntity`：`async_added_to_hass()` 里读 `async_get_last_state()`，过滤 `unknown`/`unavailable`（`switch.py:158-164`、`number.py:433-442`、`select.py:141-145`）。
+- **写成功才翻值**：失败抛 `HomeAssistantError` 且不修改本地状态（`switch.py:171-179`、`number.py:449-452`、`select.py:152-162`）。
 
 ### Option C（明确否决）
 

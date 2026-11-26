@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-002
 description: "配置表的结构契约选择『AST 静态解析 + 双向宽度比对』，而不是运行时断言、类型系统约束或纯人工 review。契约锚定到文件级消费位置而非行号，并要求表必须有消费者以防死代码。这条决策直接来自 3.10.0 的全实体 unavailable 事故。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "用 AST 双向宽度比对锁定表-消费者契约"
 date: 2026-11-01
@@ -11,7 +11,7 @@ code_refs:
   - "tests/test_const_contract.py:1-146"
   - "custom_components/epson_ef/const.py:53-92"
   - "custom_components/epson_ef/const.py:138-142"
-  - "custom_components/epson_ef/button.py:17-83"
+  - "custom_components/epson_ef/button.py:52-73"
 ---
 
 # ADR-002: 用 AST 双向宽度比对锁定表-消费者契约
@@ -26,18 +26,18 @@ accepted（2026-11-01 事故后立即建立，测试有效性通过"注入 bug �
 
 - 待机时该分支被 `if state == "on"` 跳过，因此"装上能启动、待机看着正常"；
 - 一旦开机并到达诊断周期，每次轮询抛 `ValueError: too many values to unpack (expected 5, got 6)`；
-- coordinator 每轮失败 → **48 个实体全部 unavailable**。
+- coordinator 每轮失败 → **36 个实体全部 unavailable**。
 
 静态检查（当时只有 ruff F,E9）与既有单测都没抓到。真机部署后才暴露（`tests/test_const_contract.py` 的 docstring 有记录）。
 
-**技术背景**：4 张声明式元组表驱动 48 个实体中的大部分：
+**技术背景**：4 张声明式元组表驱动 36 个实体中的大部分：
 
 | 表 | 形状 | 消费者 |
 |-|-|-|
 | `WRITABLE_SWITCHES` | 6 × 4（`const.py:53-66`） | `coordinator.py:92`、`switch.py:38` |
 | `WRITABLE_SELECTS` | 4 × **6**（`const.py:75-92`） | `coordinator.py:97`、`select.py:40` |
 | `AMBIENT_LIGHT_SWITCHES` | 3 × 4（`const.py:138-142`） | `switch.py:45` |
-| `BUTTON_DEFS` | 30 × 5（`button.py:17-83`） | `button.py:96` |
+| `BUTTON_DEFS` | 30 × 5（`button.py:52-73`） | `button.py:96` |
 
 **核心问题**：如何在不运行 HA、不启动 coordinator、不部署真机的前提下，保证"任何一张表的元组宽度变化，都必然被所有解包点同步"？
 
@@ -101,7 +101,7 @@ def _unpack_arities(name):     # 消费侧：扫全部 *.py，For + comprehensio
 **已知损失（随决策记录）**：
 
 1. **语义不检查**：两列含义写反但宽度不变，A 抓不到（如把 `options` 与 `labels` 互换）。
-2. **位置锚定只到文件级**：有人把解包点从 `coordinator.py:97` 挪到 `coordinator.py:200` 不会被发现，挪到另一个已登记文件也不会。
+2. **位置锚定只到文件级**：有人把解包点从 `coordinator.py:97` 挪到 `coordinator.py:154` 不会被发现，挪到另一个已登记文件也不会。
 3. **动态表逃逸**：表名不能用 `globals()[name]` 之类的动态构造，否则 `_table_arity` 找不到（抛 `AssertionError: not found`）。
 4. **`*rest` 逃逸**：解包点若写成 `a, b, *rest`，`target` 不是纯名字元组，会被过滤器跳过（`:81-84`），从此不受保护。
 5. **`STANDBY_MODE_OPTIONS` 不在覆盖内**：它是 dict 而非元组表，只能靠行为断言（`tests/test_api.py:282-296`）。

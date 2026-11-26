@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-003
 description: "全集成只保留一个 DataUpdateCoordinator 作为唯一轮询源，采用快/慢双速：每轮只做 2 次 HTTP 探电源态，每 12 轮才追加约 33 条只读诊断与设置回读，读失败以 carry-forward 结转旧值。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "单一轮询源 + 快/慢双速轮询节流"
 date: 2026-11-07
@@ -20,7 +20,7 @@ accepted
 
 ## 1. 背景
 
-**业务背景**：48 个实体需要持续反映设备状态（电源、灯时、20 项诊断、10 项可写设置的当前值），而用户对电源状态变化的感知延迟要求最高（默认 15s 内）。
+**业务背景**：36 个实体需要持续反映设备状态（电源、灯时、20 项诊断、10 项可写设置的当前值），而用户对电源状态变化的感知延迟要求最高（默认 15s 内）。
 
 **技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（8080），且固件 NanoHTTPD 疑似单线程：行为记录表明某些查询会挂住整个服务（固件行为记录；生产代码注释亦承认"some commands hang the HTTP thread"，`api.py:340-346`）。设备无推送能力（`manifest.json:15` `iot_class=local_polling`）。
 
@@ -36,7 +36,7 @@ accepted
 
 1. **电源态时效**（高）：HA 的 `media_player` 状态是核心体验。
 2. **固件压力**（高）：单线程服务，一次卡死即全端口不可用（`risk.md` R-17）。
-3. **实体一致性**（中）：48 个实体必须共享同一份数据，不能各自轮询。
+3. **实体一致性**（中）：36 个实体必须共享同一份数据，不能各自轮询。
 
 ## 3. 候选方案
 
@@ -49,7 +49,7 @@ accepted
 
 ### Option A（选中）
 
-`_poll_count` 计数；`_poll_count == 1 or _poll_count % DIAGNOSTIC_EVERY_N_POLLS == 0`（`coordinator.py:59`，`DIAGNOSTIC_EVERY_N_POLLS = 12`，`const.py:222`）时执行慢诊断段；每轮都执行 `probe_state()`（`coordinator.py:42-56`）。所有慢值用 carry-forward 跨周期存活（`coordinator.py:134-153`）。
+`_poll_count` 计数；`_poll_count == 1 or _poll_count % DIAGNOSTIC_EVERY_N_POLLS == 0`（`coordinator.py:59`，`DIAGNOSTIC_EVERY_N_POLLS = 12`，`const.py:199`）时执行慢诊断段；每轮都执行 `probe_state()`（`coordinator.py:42-56`）。所有慢值用 carry-forward 跨周期存活（`coordinator.py:134-153`）。
 
 ### Option C（未选）
 

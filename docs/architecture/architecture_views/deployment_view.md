@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: deployment-view
 description: "Home Assistant 自定义集成（HACS 分发；本仓库不含 Dockerfile/K8s/数据库等任何部署编排制品），以 Python 模块形式寄宿在用户的 HA 进程内；运行期经局域网明文 HTTP + Digest 认证访问单台 Epson EF 投影仪固件的 WebApiSrv(8080/pjctl)。拓扑为 单 HA 实例 → 单设备 的点对点形态，故障域集中在 HA 重启、投影仪 WebApiSrv 单线程挂起、局域网断连与 DHCP 地址漂移。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 部署视图（物理部署与拓扑）
@@ -18,7 +18,7 @@ graph TD
     subgraph HA["信任域 A：用户 Home Assistant 实例（单机、单进程）"]
         EDGE["接入/认证<br/>HA auth + 用户权限<br/>(服务无 admin 校验)"]
         subgraph CORE["HA Core 事件循环（单线程 asyncio）"]
-            UNIT_MP["media_player / sensor / switch<br/>select / number / button / binary_sensor<br/>共 48 个实体（每 config entry）"]
+            UNIT_MP["media_player / sensor / switch<br/>select / number / button / binary_sensor<br/>共 36 个实体（每 config entry）"]
             UNIT_CO["Ef50Coordinator<br/>DataUpdateCoordinator 定时任务<br/>poll_interval 5–300s，默认 15s"]
             UNIT_API["EpsonApi<br/>aiohttp.ClientSession（每 entry 1 个）<br/>Digest MD5 + nonce 缓存"]
             UNIT_SVC["services: send_key / raw_request<br/>+ 事件 epson_ef_response"]
@@ -65,19 +65,19 @@ graph TD
 | HA Core 进程（含本集成） | 承载事件循环、实体状态机、配置条目 | 1 / 1（用户单实例） | 整机资源；本集成常驻内存仅为若干 dict + 1 个 session | 无水平扩展概念；HA 自带 restart/reload 即"重启策略" |
 | `Ef50Coordinator` 定时任务 | 周期轮询电源态 + 每 12 轮刷慢速诊断 | 每 config entry 1 个 | 单轮最坏 ≈30+ 次串行 HTTP，每次默认 10s 超时；两次请求间 `asyncio.sleep(0.2)` 节流 | 由 `update_interval` 驱动（`poll_interval`，5–300s，默认 15s），无并发/无自适应退避（`custom_components/epson_ef/coordinator.py:28-33`、`:84-115`） |
 | aiohttp `ClientSession` | Digest 认证 + JSON POST 传输 | 每 entry 1 个（懒创建） | 复用连接池；session 由 `_owns_session` 判定归属 | 不扩缩；entry 卸载时 `api.close()`（`custom_components/epson_ef/api.py:87-97`、`custom_components/epson_ef/__init__.py:213-221`） |
-| 实体平台（7 个 platform） | 暴露 48 个实体 | 每 entry 58（固定，不动态增减） | 状态存于 coordinator 缓存，非独立进程 | 无（`custom_components/epson_ef/__init__.py:24-27`） |
+| 实体平台（7 个 platform） | 暴露 36 个实体 | 每 entry 36（固定，不动态增减） | 状态存于 coordinator 缓存，非独立进程 | 无（`custom_components/epson_ef/__init__.py:24-27`） |
 | 投影仪 `WebApiSrv` | 解析 pjctl、转 Binder 调用 | 1 / 1（NanoHTTPD **单线程**） | 固件内线程，无排队深度控制；一次卡死即全端口不可用 | 无。仅能靠设备重启/ADB 重启服务恢复（`docs/architecture/architecture_views/process_view.md` §2） |
 | Android `EpsonService` / MCU | 实际执行写入（灯、马达、几何） | 1 / 1 | 固件私有不透明；`control_mcu_transmitCommand` 内部超时 250–1500ms | 无（固件内部实现，无源码可查） |
 
-实体数口径：media_player 1 + sensor 2 + binary_sensor 1 + button 30 + switch 11（6 可写 + 3 氛围灯 + 测试图案 + 自动对比度）+ select 6（1 启动模式 + 4 可写 + 1 氛围灯模式）+ number 7（亮度/刷新/对焦/氛围亮度 + RGB×3）= 58，与真机验收记录的实体总数一致（`button.py:17-84`、`switch.py:34-53`、`select.py:33-46`、`number.py:53-63`）。
+实体数口径：media_player 1 + sensor 2 + binary_sensor 1 + button 10 + switch 11（6 可写 + 3 氛围灯 + 测试图案 + 自动对比度）+ select 4（3 可写 + 1 氛围灯模式）+ number 7（亮度/刷新/对焦/氛围亮度 + RGB×3）= 36（`button.py:52-73`、`switch.py:34-53`、`select.py:30-40`、`number.py:53-63`）。
 
 ### 2.2 部署制品与关键资源位置
 
 | 制品/资源类型 | 位置 | 说明 |
 |-|-|-|
 | HACS 清单 | `hacs.json:1-5` | `homeassistant: 2024.4.0` 最低版本；`render_readme: true`；无 `zip_release`/`filename`（走仓库直装） |
-| 集成清单 | `custom_components/epson_ef/manifest.json:1-19` | `domain=epson_ef`、`config_flow=true`、`iot_class=local_polling`、`version=0.0.2`、`requirements: []`（依赖 HA 自带 aiohttp） |
-| 集成代码 | `custom_components/epson_ef/*.py`（14 个模块 / 2 996 行，`ls custom_components/epson_ef/*.py \| wc -l` 实测） | 全部逻辑；无第三方包、无二进制依赖 |
+| 集成清单 | `custom_components/epson_ef/manifest.json:1-17` | `domain=epson_ef`、`config_flow=true`、`iot_class=local_polling`、`version=0.0.2`、`requirements: []`（依赖 HA 自带 aiohttp） |
+| 集成代码 | `custom_components/epson_ef/*.py`（14 个模块 / 3 025 行，`ls custom_components/epson_ef/*.py \| wc -l` 实测） | 全部逻辑；无第三方包、无二进制依赖 |
 | 前端资源 | `custom_components/epson_ef/icon.png`、`logo*.png` | 仅 HACS/UI 展示 |
 | 翻译 | `custom_components/epson_ef/strings.json`、`translations/{en,zh-Hans}.json` | 配置流与实体名称 |
 | 服务定义 | `custom_components/epson_ef/services.yaml:1-31` | `send_key`、`raw_request` 字段描述 |
@@ -158,7 +158,7 @@ graph LR
 | 资源/事件类型 | 缓存/缓冲策略 | 失效/回压策略 | 说明 |
 |-|-|-|-|
 | 轮询结果（电源态/诊断/设置值） | coordinator `self.data` 内存字典 | 无失效 TTL；慢速值"沿用上一轮"直到下次诊断轮 | 投影仪关机后灯时等值仍显示，用 `stale` 属性提示（`custom_components/epson_ef/coordinator.py:134-153`、`sensor.py:70-83`） |
-| 不可读设备状态（氛围灯/自动对比度/测试图案/静音） | 乐观状态 + `RestoreEntity` 跨重启恢复 | 无校验，第三方（遥控器/机身菜单）修改即漂移 | 实体显式 `assumed_state = True` 告知用户（`switch.py:167-169`、`:228-230`、`:288-290`、`select.py:204-206`、`number.py:445-447`） |
+| 不可读设备状态（氛围灯/自动对比度/测试图案/静音） | 乐观状态 + `RestoreEntity` 跨重启恢复 | 无校验，第三方（遥控器/机身菜单）修改即漂移 | 实体显式 `assumed_state = True` 告知用户（`switch.py:167-169`、`:228-230`、`:288-290`、`select.py:148-150`、`number.py:445-447`） |
 | Digest 认证参数 | `_auth = (nonce, realm, qop)` + 递增 `nc` | 401 或网络异常时 `_clear_auth()` 重取一次 | 避免每条命令多一次 401 往返（`api.py:84-85`、`:99-117`、`:180-204`） |
 | 写操作并发 | 仅电源类有 `asyncio.Lock` | 其它写操作（亮度/对焦/几何）无锁 | 并发连点可能产生交错的马达/几何命令（`media_player.py:73`；`number.py:282-301` 无锁） |
 
@@ -180,7 +180,7 @@ graph LR
 
 | 故障场景 | 影响范围 | 恢复机制 | RTO | RPO |
 |-|-|-|-|-|
-| HA 重启 / 集成 reload / 升级覆盖目录 | 全部 48 实体短暂 unavailable | HA 重新 `async_setup_entry`；身份从 `.storage` 的 identity 与实体注册表恢复；乐观状态由 `RestoreEntity` 恢复 | ≈ HA 启动耗时 + 首次 `async_config_entry_first_refresh`（单次探测 10s 内） | 乐观状态（静音/氛围灯/测试图案/自动对比度）可能回退到最后一次写入值；灯时等真实读数不丢 |
+| HA 重启 / 集成 reload / 升级覆盖目录 | 全部 36 实体短暂 unavailable | HA 重新 `async_setup_entry`；身份从 `.storage` 的 identity 与实体注册表恢复；乐观状态由 `RestoreEntity` 恢复 | ≈ HA 启动耗时 + 首次 `async_config_entry_first_refresh`（单次探测 10s 内） | 乐观状态（静音/氛围灯/测试图案/自动对比度）可能回退到最后一次写入值；灯时等真实读数不丢 |
 | 投影仪市电断电 / 深度待机断网 | 该 entry 全部实体 unavailable | coordinator 探测抛 `UpdateFailed` → 实体不可用；来电后下一轮自动恢复（`coordinator.py:42-45`） | 取决于人工开机（**无远程唤醒能力**，WOL 实测无效） | 不适用（设备侧状态由固件保存） |
 | 投影仪 `WebApiSrv` 单线程挂起（NanoHTTPD） | 8080 全部请求超时；HA 侧表现为不可达 | **代码内无自愈**：只有 aiohttp 10s 超时把请求判死，服务端线程仍然卡住；恢复需物理重启设备或用 ADB `am force-stop` + `am start-service` 重启服务 | 人工重启设备（分钟级）或 ADB 解卡（需预先开启 5555） | 不适用；期间所有命令与新状态变更丢失 |
 | 局域网 Wi-Fi 断连 / DHCP 续租失败 | 该 entry 全部实体 unavailable | 设备侧自行断网（`reason=3 DEAUTH_LEAVING`）；HA 只能持续轮询等待恢复 | 人工开机或等网络恢复 | 不适用 |

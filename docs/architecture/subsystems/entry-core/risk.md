@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "entry-core 模块内风险：装配失败路径的资源不归还与半装配残留、身份迁移只认当前地址导致的历史身份盲区与孤儿漏清、迁移对未知版本静默放行、服务装卸的 TOCTOU、Store 身份文件无生命周期、以及 setup 首轮必然触发全量慢诊断。全局级风险（身份双源 R-16、服务无 admin R-23、轮询积压 R-09、HA 零覆盖）见 architecture_views/risk.md，本文件不重复。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 id: entry-core
 ---
 
@@ -28,7 +28,7 @@ id: entry-core
 |风险 ID|依赖方向|依赖对象|失效/漂移场景|影响|当前保障|改进方案|
 |-|-|-|-|-|-|-|
 |RISK-EC-06|本模块→pjctl-transport|`EpsonApi.get_product_name` 的异常契约|该方法内部 `except EpsonApiError: return None`（`api.py:295-300`），而调用方 `__init__.py:172-176` 期待它抛错|setup 的"可达性门"是死代码；配置流的 `cannot_connect` 无法区分「解析失败/超时/深待机/不可达」，用户得到同一句"连接失败"|无；`config_flow.py:41-42` 与 `:79-80` 同样依赖 None 语义|二选一：让 `get_product_name` 抛错（调用方已写好 try），或在 `__init__.py` 删掉该 try 并注释真实门在首刷；配置流改用 `probe_state` 区分失败原因|
-|RISK-EC-07|本模块→state-coordinator|`Ef50Coordinator.async_config_entry_first_refresh` 的首轮开销|首刷固定执行完整慢诊断（`coordinator.py:59` 的 `_poll_count == 1`）|每次 HA 重启 / 每次 reload 都必然付出 33–35 次串行 HTTP（含 `sleep(0.2)`），setup 时长可达分钟级|无超时预算；HA 侧无 setup 超时保护|给首刷加总预算（`asyncio.timeout`），或让首刷只做快探针、慢诊断留给后续轮次|
+|RISK-EC-07|本模块→state-coordinator|`Ef50Coordinator.async_config_entry_first_refresh` 的首轮开销|首刷固定执行完整慢诊断（`coordinator.py:59` 的 `_poll_count == 1`）|每次 HA 重启 / 每次 reload 都必然付出 32 次串行 HTTP（含 `sleep(0.2)`），setup 时长可达分钟级|无超时预算；HA 侧无 setup 超时保护|给首刷加总预算（`asyncio.timeout`），或让首刷只做快探针、慢诊断留给后续轮次|
 |RISK-EC-08|本模块→HA 注册表 API|`async_get_entity_id` 签名与 `async_get_device(identifiers=...)` 弃用|前者历史上实参传反（静默失效）；后者 HA 2027.8.0 移除|孤儿实体长期残留 / 未来 HA 升级直接报错|AST 静态测试（`tests/test_regressions.py:121-171`）锁死两处用法|保持测试；迁移逻辑只允许用 `async_entries_for_config_entry`|
 |RISK-EC-09|本模块→HA Store|身份文件的生命周期|全仓库不存在 `async_remove_entry`（`grep -rn async_remove_entry custom_components/` 无命中）|删除 config entry 后 `.storage/epson_ef.<entry_id>.identity` 永久残留；重新添加同一设备会生成新 entry_id → 新文件，旧文件成为垃圾|无|实现 `async_remove_entry` 删除 Store 文件|
 
@@ -55,7 +55,7 @@ id: entry-core
   user flow 探测 product → 创建 entry(v2, unique_id=host:port) → setup
   → Store 空 → CONFIG_GET_PJ_SNO 返回序列号 → 落库 {serial}
   → base_id=serial → 迁移(旧=host:port 无实体, 空转) → 清理(表内 5 条, 无命中)
-  → 首刷成功 → 发布 hass.data → 7 平台用 serial 前缀建 48 实体
+  → 首刷成功 → 发布 hass.data → 7 平台用 serial 前缀建 36 实体
 
 异常路径 1（待机中首次添加）：
   user flow 探测成功（product name 在待机也可读）→ 创建 entry

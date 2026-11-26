@@ -2,14 +2,14 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: state-coordinator 由「轮询编排」与「契约常量声明」两个子域组成：前者用快/慢双速把 2–35 条 HTTP 请求压进一个纯标量快照，并在读失败时结转旧值；后者用 4 张定宽元组表与 6 组值域常量，把固件契约从代码里剥离成可被多平台共同解包的数据。两者共同构成全集成唯一的状态上游。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 模块设计：state-coordinator（状态协调域）
 
 ## 模块定位与核心职责
 
-- **一句话定义**：把设备侧「无推送、弱固件、命令时灵时不灵」的现实，翻译成一份每轮全量重建、可被 48 个实体直接读取的 JSON 安全字典；同时把「能写什么、值域多少」固化成声明式契约。
+- **一句话定义**：把设备侧「无推送、弱固件、命令时灵时不灵」的现实，翻译成一份每轮全量重建、可被 36 个实体直接读取的 JSON 安全字典；同时把「能写什么、值域多少」固化成声明式契约。
 - **核心业务/技术能力**：
   1. **快/慢双速节流**：每轮固定探电源态，每 12 轮才追加 33 条只读命令（`coordinator.py:38-59`）。
   2. **读失败结转**：任何 `None` 结果都不入快照，由末尾 carry-forward 用上一轮值补齐（`coordinator.py:134-153`）。
@@ -52,7 +52,7 @@ graph TD
         T1["EpsonApi.probe_state / get_raw / get_*<br/>api.py"]
     end
     subgraph 上游 Entity
-        E1["7 个平台 48 实体<br/>只读 coordinator.data"]
+        E1["7 个平台 36 实体<br/>只读 coordinator.data"]
     end
     F1 --> O1
     O1 --> O2 --> T1
@@ -195,7 +195,7 @@ _async_update_data()                                    缩进  证据
 |快轮（普通待机）|**2** 或 **3**|2 条；若唤醒探针 FAIL 且 `verify=True` 则重试 1 次 → 3 条|`api.py:252-264`（`attempts = 2 if verify else 1`）|
 |慢轮（唤醒）|**35**|= `2(probe) + 17(diag) + 6(switch) + 4(select) + 6(post)`<br/>post = `light_output` + `refresh_timer` + `focus_range` + `focus_position` + `product` + `standby_mode`|`coordinator.py:43`, `:63-83`, `:92`, `:97`, `:102`, `:106`, `:110`, `:113`, `:121`, `:130`|
 |慢轮（待机）|**2**|= `2(probe) + 0(引擎段整块跳过) + 1(standby_mode)`  ← 注意 probe 的 2 条里唤醒探针必 FAIL 并重试，实际常为 3|`coordinator.py:61` 跳过 `:62-123`；`:130` 仍执行|
-|稳态平均|**2 + 33/12 ≈ 4.75 条/轮**|= `2 + (35−2)/12`|`const.py:222` = 12|
+|稳态平均|**2 + 33/12 ≈ 4.75 条/轮**|= `2 + (35−2)/12`|`const.py:199` = 12|
 
 > ⚠️ **重复命令（AST 精确核算）**：三张表合计发 **27 条**请求（17 诊断 + 6 开关 + 4 选择），去重后为 **21 条**——有 **6 条完全重复的请求**：`CONFIG_GET_VMUTE`、`CONFIG_GET_COLOR_TEMP`、`CONFIG_GET_DYNAMIC_CONTRAST`、`CONFIG_GET_MOVEMENT_SENSOR`、`CONFIG_GET_SMART_EYE_PROTECTION`、`CONFIG_GET_STARTUP_CORRECTION` 各被读 **2 次**（先在 17 条诊断表里进 `diag`，再在开关/选择表里进 `settings`，命令号与参数完全相同）。
 >
@@ -318,7 +318,7 @@ sequenceDiagram
 |Template Method|HA `DataUpdateCoordinator._async_update` 调用子类 `_async_update_data`|把调度/重试/`last_update_success` 交给框架，子类只写「取一次数据」|`coordinator.py:37-154`|不自己写 `async_track_time_interval`，换取统一的可用性语义|
 |Table-Driven / Metadata Mapping|4 张元组表 + 通用实体类|10 个表驱动设置实体不必各写一个类；新增设置只需加一行表项|`const.py:53-92`、`switch.py:56-117`、`select.py:48-113`|代价是表宽度成为跨文件契约（见 ADR-state-coordinator-001）|
 |Carry-Forward（缓存穿透兜底）|`:135-153`|弱固件下读失败极常见，置空会让传感器断档|`coordinator.py:134-153`|与「读失败写 None」正好相反的策略选择|
-|Two-Speed Lane（分级刷新）|`:59` + `const.py:222`|40 个只读命令 × 每 15s = 固件不可承受|`coordinator.py:59`|用 12:1 的降频换取请求量恒定|
+|Two-Speed Lane（分级刷新）|`:59` + `const.py:199`|40 个只读命令 × 每 15s = 固件不可承受|`coordinator.py:59`|用 12:1 的降频换取请求量恒定|
 |Declarative Contract with Static Verification|`tests/test_const_contract.py` 用 AST 比对表宽度|表宽度漂移只在慢轮运行时炸，且炸成「全集成 unavailable」|`tests/test_const_contract.py:111-125`|把「运行时才暴露」的契约错误左移到 CI|
 
 ## 数据设计
@@ -330,7 +330,7 @@ sequenceDiagram
 |`WRITABLE_SWITCHES`|**4**|**6**|①唯一后缀 → `settings` 的键与 `unique_id` 组成<br/>②翻译键 → `strings.json` 的 entity.switch.*<br/>③GET 命令号<br/>④SET 命令号|`switch.py:38`、`coordinator.py:92`|`const.py:53-66`|
 |`WRITABLE_SELECTS`|**6**|**4**|①唯一后缀 ②翻译键 ③GET 命令号 ④SET 命令号<br/>⑤原始档位 `list[str]` ⑥档位标签 `dict[str,str] \| None`|`select.py:40`、`coordinator.py:97`|`const.py:75-92`|
 |`AMBIENT_LIGHT_SWITCHES`|**4**|**3**|①唯一后缀 ②翻译键 ③图标 ④子索引 kind|`switch.py:45`|`const.py:138-142`|
-|`AMBIENT_MODE_OPTIONS`|**2**|**4**|①显示标签（中文）②固件槽位 int|`select.py:180`（取 [0]）、`select.py:187`（`dict()` 取双向映射）|`const.py:158-163`|
+|`AMBIENT_MODE_OPTIONS`|**2**|**4**|①显示标签（中文）②固件槽位 int|`select.py:124`（取 [0]）、`select.py:131`（`dict()` 取双向映射）|`const.py:158-163`|
 
 **宽度不一致的后果**：Python 的 `for a, b, c, d in table` 是**严格元组解包**。任一行宽度与解包点不符即抛 `ValueError: too many values to unpack`（或 `not enough values`）。该异常发生在 `_async_update_data` 内，被 HA 视为更新失败 → `last_update_success=False` → **全部 `CoordinatorEntity` 变成 `unavailable`**。这不是推测，是仓库记录的真实事故（`tests/test_const_contract.py:1-9` 的 docstring）：3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组，`coordinator.py` 仍按 5 元组解包，静态测试与单元测试都没抓到，真机部署后每次诊断轮询都抛 ValueError，整个集成所有实体 unavailable。
 
@@ -343,7 +343,7 @@ sequenceDiagram
 |`AMBIENT_LIGHT_SWITCHES`|4|—|4（`:45`）|—|✅|
 |`AMBIENT_MODE_OPTIONS`|2|—|—|`dict()`（`:187`）/ `[0]`（`:180`）|✅|
 
-**未被测试覆盖的表**：`tests/test_const_contract.py:27-32` 只登记了 4 张表（含 `button.py` 的 `BUTTON_DEFS`，宽度 5、22 行），**`AMBIENT_MODE_OPTIONS` 不在其中**——它靠 `dict()` 与列表推导消费，不产生元组解包 AST 节点，因此即使宽度漂移也不会被该测试捕获。见 risk.md R-SC-06。
+**未被测试覆盖的表**：`tests/test_const_contract.py:27-32` 只登记了 4 张表（含 `button.py` 的 `BUTTON_DEFS`，宽度 5、10 行），**`AMBIENT_MODE_OPTIONS` 不在其中**——它靠 `dict()` 与列表推导消费，不产生元组解包 AST 节点，因此即使宽度漂移也不会被该测试捕获。见 risk.md R-SC-06。
 
 ### 2.2 值域常量与固件实测的关系
 
@@ -362,7 +362,7 @@ sequenceDiagram
 |`QC_SHIFT_STEP`|13|真机 ± 回环|`"2 13 0"` → `"-13 0"` 零残差；≈1% 面板宽|`const.py:170`, `:177`|
 |`COLOR_GAIN_*`|0 / 255|真机变值回环|0/1/50/150/200/255 边界回环实测，不受投影偏好切换影响|`const.py:185-191`|
 |`STANDBY_MODE_OPTIONS`|`{"0":"节能","1":"快速启动"}`|固件资源 menu.json（**未实机核对**）|注释明确：若实际设备映射相反，可通过实体属性 `raw_value` 核对|`const.py:23-30`|
-|`DIAGNOSTIC_EVERY_N_POLLS`|12|工程选择|无实测依据，纯权衡值（12 × 15s = 180s）|`const.py:221-222`|
+|`DIAGNOSTIC_EVERY_N_POLLS`|12|工程选择|无实测依据，纯权衡值（12 × 15s = 180s）|`const.py:199`|
 
 ### 2.3 疑似死常量 / 未被消费的常量（逐个核对）
 
@@ -387,15 +387,15 @@ sequenceDiagram
 |-|-|-|
 |`services.py`|**唯一查表者**：`KEYCODES.get(key)`，未命中且 key 为纯数字则直接把数字当 keycode|`services.py:49-53`|
 |`media_player.py`|**完全绕过**：全部 9 处按键用字面量——`26`(POWER)×2、`24`(VOL+)、`25`(VOL−)、`164`(MUTE)、`126`(PLAY)、`127`(PAUSE)、`88`(PREV)、`87`(NEXT)|`media_player.py:184`, `:196`, `:202`, `:205`, `:214`, `:219`, `:222`, `:225`, `:228`|
-|`button.py`|**完全绕过**：4 处 `NOTIFY_KEYEVENT` 按钮用字符串字面量 `"3"`(HOME)、`"4"`(BACK)、`"82"`(MENU)、`"243"`(HDMI1)，且命令号也硬编码为字符串 `"NOTIFY_KEYEVENT"` 而非 `KEYCODE_SEND`|`button.py:18-22`|
+|`button.py`|**完全绕过**：4 处 `NOTIFY_KEYEVENT` 按钮用字符串字面量 `"3"`(HOME)、`"4"`(BACK)、`"82"`(MENU)、`"243"`(HDMI1)，且命令号也硬编码为字符串 `"NOTIFY_KEYEVENT"` 而非 `KEYCODE_SEND`|`button.py:54-56`|
 
-**具体点名的硬编码**：`media_player.py:184` 与 `:196` 的 `await self._key(26)` 中，`26` 就是 `KEYCODES["POWER"]`（`const.py:206`）。同样 `media_player.py:214` 的 `164` 是 `KEYCODES["MUTE"]`（`const.py:212`）。
+**具体点名的硬编码**：`media_player.py:184` 与 `:196` 的 `await self._key(26)` 中，`26` 就是 `KEYCODES["POWER"]`（`const.py:189`）。同样 `media_player.py:214` 的 `164` 是 `KEYCODES["MUTE"]`（`const.py:195`）。
 
 **影响**：`KEYCODES` 目前实际退化为「只服务于 `epson_ef.send_key` 服务的字典」，而集成自身的实体行为完全不经过它。改变 `KEYCODES` 里任何一项不会影响媒体播放器的行为——这既是「表驱动未贯彻到消费侧」的证据，也是潜在陷阱（有人改了 `KEYCODES["POWER"]` 会以为改了电源按钮）。
 
 ### 2.5 存储与持久化设计
 
-**不适用**。本模块不持久化任何状态：`_poll_count` 与 `coordinator.data` 全在内存（`coordinator.py:35`, `:39`），进程重启即归零 → 首轮 `_poll_count == 1` 触发强制慢轮（`:59`）。持久化的需求由实体侧的 `RestoreEntity` 承担（如 `switch.py:121`、`select.py:168`、`number.py:67`）。
+**不适用**。本模块不持久化任何状态：`_poll_count` 与 `coordinator.data` 全在内存（`coordinator.py:35`, `:39`），进程重启即归零 → 首轮 `_poll_count == 1` 触发强制慢轮（`:59`）。持久化的需求由实体侧的 `RestoreEntity` 承担（如 `switch.py:121`、`select.py:112`、`number.py:67`）。
 
 ### 2.6 缓存策略
 
@@ -425,7 +425,7 @@ sequenceDiagram
 |`WRITABLE_SWITCHES`|开关契约表|`switch.py:38`、`coordinator.py:92`|`const.py:53`|—|6×4 元组|
 |`WRITABLE_SELECTS`|选择契约表|`select.py:40`、`coordinator.py:97`|`const.py:75`|—|4×6 元组|
 |`AMBIENT_LIGHT_SWITCHES`|氛围灯开关表|`switch.py:45`|`const.py:138`|—|3×4 元组|
-|`AMBIENT_MODE_OPTIONS`|光效模式表|`select.py:180`, `:187`|`const.py:158`|—|4×2 元组|
+|`AMBIENT_MODE_OPTIONS`|光效模式表|`select.py:124`, `:187`|`const.py:158`|—|4×2 元组|
 |`standby_raw_to_option(raw)`|原始值→中文选项|`select.py:145`|`const.py:41`|`str \| None`|`str \| None`（未知值返 None，不猜测）|
 |`standby_option_to_raw(option)`|中文选项→原始值|`select.py:153`|`const.py:33`|`str`|`str \| None`|
 
@@ -434,7 +434,7 @@ sequenceDiagram
 |名称|描述|类型|默认值|取值范围|
 |-|-|-|-|-|
 |`poll_interval`|轮询周期（秒）|`int`|`DEFAULT_POLL_INTERVAL = 15`|5–300（`config_flow.py:63`, `:129`）|
-|`DIAGNOSTIC_EVERY_N_POLLS`|慢轮间隔（轮）|模块常量|`12`|编译期固定，无运行时配置（`const.py:222`）|
+|`DIAGNOSTIC_EVERY_N_POLLS`|慢轮间隔（轮）|模块常量|`12`|编译期固定，无运行时配置（`const.py:199`）|
 
 ### 错误码与异常定义
 

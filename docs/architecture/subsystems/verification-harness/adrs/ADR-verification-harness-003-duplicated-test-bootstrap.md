@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-003
 description: "测试引导逻辑（伪包注入 4 行）选择在 3 个测试文件中逐字复制，而不是抽成 tests/_bootstrap.py 共享模块。理由是保持『每个测试文件可单文件执行、可单文件拷走』与 discover 顺序无关性；代价是三处必须手工同步，且已有一处（test_const_contract.py）注入了伪包却根本不 import 任何生产模块的死代码。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "测试引导逻辑复制而非共享模块"
 date: 2026-11-01
@@ -83,7 +83,7 @@ accepted（与 ADR-001 同时确立；`tests/test_const_contract.py` 与 `tests/
 |-|-|
 | `python3 tests/test_regressions.py`（直跑） | `Ran 7 tests ... OK`，rc=0 |
 | `python3 -m unittest tests.test_regressions`（模块路径） | **`ModuleNotFoundError: No module named '_bootstrap'`**，`FAILED (errors=1)`，rc=1 |
-| `python3 -m unittest discover -s tests` | `Ran 64 tests ... OK`，rc=0 |
+| `python3 -m unittest discover -s tests` | `Ran 73 tests ... OK`，rc=0 |
 
 失败原因：模块式调用时 `sys.path` 顶层是 cwd，而不是 `tests/`，因此 `import _bootstrap` 找不到；直跑时 `sys.path[0]` 恰是脚本目录才侥幸成功。而"模块式调用"正是本项目唯一能跑满 51/9 个用例的路径（`python3 tests/x.py` 因 `unittest.main()` 位置缺陷只跑 42/7，见 `tests/test_api.py:507-508`、`tests/test_regressions.py:183-184`）。
 

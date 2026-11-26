@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-004
 description: unique_id 必须落在四套既有约定之内（平台前缀式 / setting 式 / 裸后缀式 / 直接使用 base_id），且 setting 式后缀同时是 coordinator settings 的键、strings.json 的翻译键、legacy 清理表的匹配段。新增或改名实体时必须四处同步，并由测试守护"当前实体集与 legacy 表不相交"。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 工程
 principle_scope: module
 ---
@@ -12,11 +12,11 @@ principle_scope: module
 
 ## 原则详细描述
 
-本模块 48 个实体的 unique_id 全部由 `{base_id}` 加一个后缀构成，但后缀的拼法有**四套并存**的约定（这是历史演化的结果，不是设计）：
+本模块 36 个实体的 unique_id 全部由 `{base_id}` 加一个后缀构成，但后缀的拼法有**四套并存**的约定（这是历史演化的结果，不是设计）：
 
 |约定|模式|实例数|证据|
 |-|-|-|-|
-|① 平台前缀式|`{base_id}-<platform>-{key}`|30 button + 7 number（含 color_gain ×3）+ 1 select-ambient_mode = 38|`button.py:122`、`number.py:90/169/248/338/424`、`select.py:189`|
+|① 平台前缀式|`{base_id}-<platform>-{key}`|30 button + 7 number（含 color_gain ×3）+ 1 select-ambient_mode = 38|`button.py:122`、`number.py:90/169/248/338/424`、`select.py:133`|
 |② setting 式|`{base_id}-setting-{suffix}`|11 switch + 4 select = 15|`switch.py:78/148/210/270`、`select.py:75`|
 |③ 裸后缀式|`{base_id}-{suffix}`|connectivity、light_hours、distance = 3|`binary_sensor.py:41`、`sensor.py:44`|
 |④ 直接 base_id|`{base_id}`|media_player = 1|`media_player.py:68`|
@@ -24,7 +24,7 @@ principle_scope: module
 **suffix 是四方共用的主键**，这是本模块最容易被低估的耦合：
 
 1. `coordinator.data["settings"][suffix]` —— 读写都按 suffix 索引（`coordinator.py:95`, `:100`；`switch.py:91`；`select.py:94`）；
-2. `strings.json` 的 `entity.<platform>.<translation_key>` —— 而 `translation_key` 当前恒等于 suffix（14/14 个 setting 项实测 `suffix == key`，`const.py:59-72`、`:135-139` 与 `button.py:26-76` 的 22 行全部满足）；
+2. `strings.json` 的 `entity.<platform>.<translation_key>` —— 而 `translation_key` 当前恒等于 suffix（14/14 个 setting 项实测 `suffix == key`，`const.py:59-72`、`:135-139` 与 `button.py:52-73` 的 10 行全部满足）；
 3. unique_id 尾段 —— `{base_id}-setting-{suffix}`；
 4. `__init__.py` 的 legacy 清理表 —— 按 suffix 拼出 `(platform, unique_id)` 精确匹配（`__init__.py:146-163`）。
 
@@ -45,7 +45,7 @@ principle_scope: module
 ## 适用范围
 
 - 全部 7 个平台模块的新增/改名/删除实体。
-- 特别是表驱动路径：`const.py:53-142` 与 `button.py:17-83`。
+- 特别是表驱动路径：`const.py:53-142` 与 `button.py:52-73`。
 
 ## 规则
 
@@ -64,7 +64,7 @@ principle_scope: module
 
 ## 修改检查清单
 
-- [ ] 新 suffix 是否与现有 14 个 setting 后缀、22 个 button 后缀、3 个裸后缀全部不重复？
+- [ ] 新 suffix 是否与现有 14 个 setting 后缀、10 个 button 后缀、3 个裸后缀全部不重复？
 - [ ] `settings` 键 / `translation_key` / unique_id 尾段 是否三处同名？
 - [ ] `strings.json` + `translations/en.json` + `translations/zh-Hans.json` 三处键集是否仍一致？
 - [ ] 若是删除或改名：legacy 表是否已登记旧 suffix（含 `host:port` 形态）？

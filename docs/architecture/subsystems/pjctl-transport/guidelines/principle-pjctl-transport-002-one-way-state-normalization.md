@@ -8,7 +8,7 @@ id: principle-pjctl-transport-002-one-way-state-normalization
 
 description: "电源判定的异常重分类是单向且不可逆的：存活探针的 Timeout 必须升级为 Unavailable（端点不可达），而存活通过后的任何引擎查询失败必须降级为 off（待机）。两个方向都不得反向，否则上层降级逻辑整体失效。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 principle_scope: module
 

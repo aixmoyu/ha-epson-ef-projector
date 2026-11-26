@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "全局风险登记：四类来源（稳定性/并发、性能、安全、运维与工程）合并自四张视图的探索结论。本项目最高危的两个事实是『写操作几乎无并发保护』与『单轮轮询可远超轮询间隔』——两者叠加在单线程 NanoHTTPD 固件上；其次是 raw_request 服务无白名单无 admin 校验的任意命令面，以及 CI 不安装 homeassistant 导致的装配层零覆盖。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 架构风险分析
@@ -15,20 +15,20 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 
 | 风险 ID| 场景 | 触发条件 | 影响范围 | 概率 | 严重度 | 优先级 | 当前缓解 | 建议缓解 | 状态 |
 |-|-|-|-|-|-|-|-|-|-|
-| R-01 | 写操作无并发保护（除电源） | 用户/自动化并发调用 number/switch/select/button/services 的写路径 | 全部可写实体 | 中 | 高 | **P0** | 仅电源路径有 `asyncio.Lock`（`media_player.py:73`, `:180`, `:192`）；其余写路径直接 `await api.request`（`number.py:126`, `switch.py:106`, `select.py:107`, `button.py:138`, `services.py:64`） | 在 `EpsonApi` 上加写串行化 `asyncio.Lock`（或按命令族分锁），最少覆盖"连续运动类"（对焦/几何） | 开放 |
+| R-01 | 写操作无并发保护（除电源） | 用户/自动化并发调用 number/switch/select/button/services 的写路径 | 全部可写实体 | 中 | 高 | **P0** | 仅电源路径有 `asyncio.Lock`（`media_player.py:73`, `:180`, `:192`）；其余写路径直接 `await api.request`（`number.py:126`, `switch.py:106`, `select.py:107`, `button.py:128`, `services.py:64`） | 在 `EpsonApi` 上加写串行化 `asyncio.Lock`（或按命令族分锁），最少覆盖"连续运动类"（对焦/几何） | 开放 |
 | R-02 | 对焦闭环可被并发重入打断 | 两次并发设置 focus 目标 | 对焦马达、几何位置 | 低 | 高 | **P0** | 无锁；`goto_focus` 循环内无 `async with`（`api.py:561-583`），实体 setter 亦无锁（`number.py:282-301`） | 对 `Ef50FocusNumber` 加实例锁；`goto_focus` 入口加可重入拒绝（busy 即抛错） | 开放 |
 | R-03 | 马达在取消路径上可能不停 | HA 关停/任务被二次取消 | 对焦马达（可能顶到限位） | 低 | 高 | **P1** | `try/finally` 保证发 `OFF`（`api.py:573-582`，意图注释 `:575-578`），但 `await focus_move_stop()` 未用 `asyncio.shield` | 用 `asyncio.shield(focus_move_stop())` 包裹 finally 内调用 | 开放 |
 | R-04 | 色彩增益"读-改-写"丢更新 | 两个通道并发写 | RGB 增益三实体 | 中 | 中 | **P1** | 三通道共享一条 GET（`number.py:351-361`），写为"取三元组→替换单通道→写整串"（`number.py:381-389`） | 三通道共享锁；或改为"写后统一回读再写" | 开放 |
 | R-05 | 共享字典就地 mutate | 实体写与协调器 merge 交错 | 全部实体状态一致性 | 中 | 中 | **P1** | 实体直接改 `coordinator.data`（`media_player.py:162`, `number.py:129`, `switch.py:109`, `select.py:110`），协调器同时读取做 merge（`coordinator.py:117`, `:125`）；无版本号、无快照替换 | 改为"整体替换不可变快照"或加锁；最少在写入处 `dict(...)` 复制 | 开放 |
 | R-06 | Digest nonce 并发竞争 | 并发协程中任一超时/网络错清空共享 `_auth` | 全部请求（可退化为 401 链） | 中 | 中 | **P2** | `_nc` 同步递增（`api.py:125`，注释声明并发安全），但 `_update_auth` 归零（`api.py:111`）、`_clear_auth` 被任一协程触发（`api.py:208`, `:213`） | 把 auth 状态改为每请求携带的不可变快照，或整体加锁 | 开放 |
 | R-07 | session 生命周期缺口 | 卸载后迟到协程重建 session | 资源泄漏 | 低 | 低 | **P3** | `_ensure_session` 不检查已关闭/已卸载（`api.py:93-97`）；`close()` 后 `_owns_session` 不复位（`api.py:87-90`） | 增加 `_closed` 标志，关闭后拒绝重建 | 开放 |
-| R-08 | 电源锁只覆盖单实体 | 按钮/服务发 `POWER(26)` 与 turn_on/off 并发 | 电源状态与设备真值分叉 | 中 | 中 | **P1** | 锁是每实体实例（`media_player.py:73`）；`services.send_key`（`services.py:54`）与按钮（`button.py:17-83` 含 POWER 键）不经过它 | 把电源锁上提到 entry 级共享对象（`hass.data[DOMAIN][entry_id]`） | 开放 |
+| R-08 | 电源锁只覆盖单实体 | 按钮/服务发 `POWER(26)` 与 turn_on/off 并发 | 电源状态与设备真值分叉 | 中 | 中 | **P1** | 锁是每实体实例（`media_player.py:73`）；`services.send_key`（`services.py:54`）与按钮（`button.py:52-73` 含 POWER 键）不经过它 | 把电源锁上提到 entry 级共享对象（`hass.data[DOMAIN][entry_id]`） | 开放 |
 
 ## 性能瓶颈风险
 
 | 瓶颈 ID| 位置 | 当前指标 | 阈值 | 触发条件 | 影响 | 突破方案 | 预计工作量 |
 |-|-|-|-|-|-|-|-|
-| R-09 | 慢诊断段串行 33–35 次 HTTP（`coordinator.py:59-132`） | 单条默认 10s 超时（`api.py:160`）；diag 17 条 + switch 6 + select 3 + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode | `update_interval` 默认 15s（`const.py:11`） | 投影仪唤醒时每 12 轮一次；固件变慢或半挂起 | 最坏 ≈320s 远超 15s → 轮询积压、`async_request_refresh` 排队、状态长时间陈旧 | 给整轮 `_async_update_data` 加 `asyncio.timeout` 总预算；失败即跳过本轮并退避 | 小 |
+| R-09 | 慢诊断段串行 32 次 HTTP（`coordinator.py:59-132`） | 单条默认 10s 超时（`api.py:160`）；diag 17 条 + switch 6 + select 3 + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode | `update_interval` 默认 15s（`const.py:11`） | 投影仪唤醒时每 12 轮一次；固件变慢或半挂起 | 最坏 ≈320s 远超 15s → 轮询积压、`async_request_refresh` 排队、状态长时间陈旧 | 给整轮 `_async_update_data` 加 `asyncio.timeout` 总预算；失败即跳过本轮并退避 | 小 |
 | R-10 | 命令间节流不均 | diag 与 switch/select 回读后 `sleep(0.2)`（`coordinator.py:88`, `:96`, `:101`），后 5 条（light_output/refresh_timer/focus_range/focus_pos/standby_mode）无间隔（`coordinator.py:102-115`, `:130`） | 单线程固件（NanoHTTPD） | 每诊断轮 | 突发 5 连发对固件压力集中 | 统一节流策略（统一 0.2s 或按命令族分类） | 小 |
 | R-10b | 慢轮存在 7 条重复请求（占慢轮 35 条的 20%） | `diag` 探针表与 `settings` 回读表对同一条命令各发一次：`CONFIG_GET_VMUTE`/`COLOR_TEMP`/`DYNAMIC_CONTRAST`/`MOVEMENT_SENSOR`/`SMART_EYE_PROTECTION`/`STARTUP_CORRECTION` 共 6 条重复（`coordinator.py:63-83` vs `:92-101`，均在 `const.py:53-66`/`:75-92` 表中），另有 `CONFIG_GET_PRODUCT_NAME` 在 probe 与 `coordinator.py:121` 各读一次 | 单线程固件 | 每诊断轮 | 无谓请求使慢轮从 28 条膨胀到 35 条，直接放大 R-09 的积压风险 | 把 `diag` 与 `settings` 合并成一次读取，同一命令只请求一次 | 小 |
 | R-11 | 没有自适应退避 | 设备持续超时 | — | 断电/DHCP 失效/固件挂起 | 每 `poll_interval` 都重打 2 次 liveness，无退避 | 连续 N 次失败后指数退避至上限 | 小 |
@@ -39,7 +39,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 |-|-|-|-|-|-|-|-|
 | R-12 | 可读设置写入 → 固件真值 | 最终一致 | 乐观写内存 + 慢诊断回读覆盖（`coordinator.py:116-119`） | 收敛需 ≤12 个轮询周期；`Ef50ConfigSwitch` 写入后**不发 refresh**（`switch.py:104-111`） | 高 | 中等 | 所有可写实体统一 `async_request_refresh()` |
 | R-13 | 待机期间设置不刷新 | 最终一致 | 整段 `settings` 落在 `if state == "on":` 内（`coordinator.py:61`, `:116`），关机时靠 carry-forward | 关机期间他人用遥控器改设置 → 集成显示旧值，开机会短暂错 | 高 | 低 | 待机也读一次 settings（或开机时强制刷新） |
-| R-14 | 无读通路能力的乐观状态 | 无收敛 | `assumed_state=True`（`switch.py:166-169`、`number.py:444-447`、`select.py:203-206`）+ `RestoreEntity`（`switch.py:158-164` 等） | 物理遥控器/机身菜单修改后永久漂移；静音**未标** `assumed_state`（`media_player.py:50`） | 高 | 低 | 为静音补 `assumed_state`；文档明示"需手动同步" |
+| R-14 | 无读通路能力的乐观状态 | 无收敛 | `assumed_state=True`（`switch.py:166-169`、`number.py:444-447`、`select.py:147-150`）+ `RestoreEntity`（`switch.py:158-164` 等） | 物理遥控器/机身菜单修改后永久漂移；静音**未标** `assumed_state`（`media_player.py:50`） | 高 | 低 | 为静音补 `assumed_state`；文档明示"需手动同步" |
 | R-15 | 灯时/距离的陈旧读数 | 最终一致 | 关机时 carry-forward 且暴露 `stale` 属性（`sensor.py:70-83`, `:112-121`；`media_player.py:114-120`） | 陈旧值可能被自动化当作实时值消费 | 中 | 中 | 自动化侧用 `stale` 属性做 guard；或提供 `last_measured_at` 阈值告警 |
 | R-16 | 配置私钥/身份与 entry unique_id 不同源 | — | 身份走 serial+Store（`__init__.py:42-76`），entry unique_id 走 `host:port`（`config_flow.py:47-49`） | 改 IP 后"重新添加"会造出第二个 entry，同序列号实体 unique_id 冲突 | 中 | 高 | 创建时也尝试用序列号做 unique_id；或同序列号去重提示 |
 
@@ -78,8 +78,8 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 
 | 资源/瓶颈点 | 当前容量 | 当前利用率 | 短期预测 | 长期预测 | 扩容阈值 | 突破/扩容方案 |
 |-|-|-|-|-|-|-|
-| 单 entry 实体数 | 58 个（固定枚举，不可动态增减） | — | 随固件能力适配持续增长（v3.6→v3.10 从少量增至 58） | 固件仍存在未适配的读取与写入命令，能力面可能继续增长 | 实体数增长会线性放大诊断轮 HTTP 次数（当前 33–35） | 诊断轮改为按需/分批；或把只读诊断降为显式服务调用 |
-| 慢诊断轮 HTTP 次数 | 33–35 次/12 轮 | 每条 0.2s 间隔 ≈ 7s 基线 | 同上 | 同上 | 超过 `poll_interval` × 12 | 见 R-09 |
+| 单 entry 实体数 | 36 个（固定枚举，不可动态增减） | — | 随固件能力适配持续增长（v3.6→v3.10 从少量增至 58，0.0.4 收敛为 36） | 固件仍存在未适配的读取与写入命令，能力面可能继续增长 | 实体数增长会线性放大诊断轮 HTTP 次数（当前 32） | 诊断轮改为按需/分批；或把只读诊断降为显式服务调用 |
+| 慢诊断轮 HTTP 次数 | 32 次/12 轮 | 每条 0.2s 间隔 ≈ 7s 基线 | 同上 | 同上 | 超过 `poll_interval` × 12 | 见 R-09 |
 | 多设备（多 entry） | 未验证 | — | 服务未指定 entity_id 时取"第一个 entry"（`services.py:31-35`） | 语义在多设备下含糊 | 2 台 | 服务强制要求 entity_id，或按 device_id 路由 |
 
 ## 技术债务
@@ -87,16 +87,16 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 | 区域 | 债务类型 | 原因 | 严重度 | 偿还建议 |
 |-|-|-|-|-|
 | 传输层职责 | 设计债 | `api.py` 有 12 个公开方法在包内零调用者（`get_distance_mm:353`、`get_light_output:366`、`get_picture_preference:380`、`get_color_gain:432`、`focus_step:516`、`geometry_zoom:590`、`geometry_shift:600`、`geometry_reset:610`、`get_auto_focus_state:634`、`get_auto_focus_target:643`、`get_light_time:330`、`set_picture_preference:384` 等），协调器改用 `get_raw` + 手工解析（`coordinator.py:63-83`） | 中等 | 二选一：让协调器改用语义方法，或删掉无用方法；避免双份解析 |
-| 实体平台越界 | 设计债 | 平台直接 `api.request(cmd, params=...)` 拼命令（`switch.py:106`、`select.py:107`、`button.py:138`），绕过 `api.py` 的 `set_*` 语义封装；实测 40 个可写实体中仅 15 个走语义方法，22 个按钮 + 6 个配置开关 + 4 个选择器全部裸拼命令串（`button.py:138`、`switch.py:106`、`select.py:107`） | 中等 | 平台只调语义方法；命令字符串集中到 `const.py`/`api.py` |
+| 实体平台越界 | 设计债 | 平台直接 `api.request(cmd, params=...)` 拼命令（`switch.py:106`、`select.py:107`、`button.py:128`），绕过 `api.py` 的 `set_*` 语义封装；实测 33 个可写实体中仅 14 个走语义方法，10 个按钮 + 6 个配置开关 + 4 个选择器全部裸拼命令串（`button.py:128`、`switch.py:106`、`select.py:107`） | 中等 | 平台只调语义方法；命令字符串集中到 `const.py`/`api.py` |
 | `hass.data` 隐式契约 | 设计债 | 字典无类型，9 处解包（写入 `__init__.py:195-201`；读取 `binary_sensor.py:23`、`services.py:27`、`diagnostics.py:16` 等） | 中等 | 引入 `TypedDict`/dataclass 描述 entry data |
-| 命名 | 代码债 | 20 个类名 `Ef50*` 与 domain `epson_ef`、覆盖 HB71/HB7x 全系脱节（`coordinator.py:19`、`media_player.py:41` 等） | 轻微 | 新代码用 `Epson*`，老类逐步重命名（需同步测试字符串） |
+| 命名 | 代码债 | 19 个类名 `Ef50*` 与 domain `epson_ef`、覆盖 HB71/HB7x 全系脱节（`coordinator.py:19`、`media_player.py:41` 等） | 轻微 | 新代码用 `Epson*`，老类逐步重命名（需同步测试字符串） |
 | 死代码 | 代码债 | `_TIMEOUT` 定义后从未引用（`api.py:37`，真实超时在 `:160`/`:188` 内联）；`coordinator.py:120` 的 `if state == "on":` 嵌在 `:61` 同条件内属冗余 | 轻微 | 删除或统一超时配置项 |
 | 异常捕获过宽 | 代码债 | `switch.py:107`、`select.py:108`、`services.py:65` 用 `except Exception` 吞掉编程错误 | 中等 | 收窄到 `EpsonApiError` 家族，保留 `Exception` 仅用于最终兜底日志 |
 | 不可达分支 | 代码债 | `__init__.py:172-176` 依赖 `get_product_name` 抛错，但其内部 `except EpsonApiError: return None`（`api.py:295-300`）→ 该分支死代码 | 中等 | 让 `get_product_name` 抛错，或删除该 try/except 并注明真实降级点在协调器首刷 |
 | 测试结构 | 测试债 | `unittest.main()` 置于文件中部的类之间（`tests/test_api.py:507-508`、`tests/test_regressions.py:183-184`）→ 直跑只执行 42/64 与 7/9 | 严重 | 把 `unittest.main()` 移到文件末尾（或删除，统一用 discover/pytest） |
 | HA 运行时零覆盖 | 测试债 | CI 不安装 `homeassistant`（`.github/workflows/tests.yml:18`），7 个平台 + config_flow + services + diagnostics 的装配零自动化验证；历史已因此出过全实体不可用 | 严重 | 引入 `pytest-homeassistant-custom-component` 与最小 setup/实体装配冒烟测试 |
 | `tools/` 无门禁 | 测试债 | CI 的 ruff 范围不含 `tools/`（`.github/workflows/tests.yml:21`），本地 `ruff check .` 已全绿，但 CI 范围始终不含 `tools/` | 轻微 | 把 `tools/` 纳入 CI lint 范围 |
-| 发布工程 | 工程债 | 版本号唯一载体是 `manifest.json:18`，与 release tag 的一致性靠手工；无版本校验作业（2026-11-12 修订：tag/release `v0.0.1` 已存在，`hacs`/`hassfest` 工作流已加） | 中等 | 加 tag/release workflow 与版本一致性校验 |
+| 发布工程 | 工程债 | 版本号唯一载体是 `manifest.json:17`，与 release tag 的一致性靠手工；无版本校验作业（2026-11-12 修订：tag/release `v0.0.1` 已存在，`hacs`/`hassfest` 工作流已加） | 中等 | 加 tag/release workflow 与版本一致性校验 |
 | 依赖声明 | 工程债 | `pytest` 未声明（无 requirements/CI 未装），但无 requirements 声明 pytest；`ruff` 无配置无版本锁 | 轻微 | 加 `requirements-dev.txt` 或 pyproject 的 optional-dependencies |
 | 文档漂移 | 文档债 | 协议结论分散在 `const.py` 注释与 `api.py` docstring 中，部分早期结论已被后续实测修正，历史版本仍可能被误引 | 中等 | 保持注释与代码同提交；已推翻的结论就地标注 |
 

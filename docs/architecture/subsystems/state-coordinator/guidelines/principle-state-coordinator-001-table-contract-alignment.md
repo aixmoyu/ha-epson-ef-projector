@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-001
 description: const.py 的 4 张声明式表是跨文件契约：宽度必须与全部解包点严格一致，第一列后缀必须与 settings 键、unique_id 尾段、legacy 清理表三方对齐。任何宽度或后缀变更必须同时改全部消费点并由 AST 级静态测试守护，否则失败模式是「慢轮抛 ValueError → 全集成 unavailable」。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---
@@ -22,7 +22,7 @@ principle_scope: module
    - 实体 `unique_id` 的尾段 `f"{base_id}-setting-{suffix}"`（`switch.py:78`、`select.py:75`）；
    - 升级时清理旧实体的匹配依据 `f"{base_id}-{suffix}"`（`__init__.py:146-150`）。
 
-这两份契约的失败模式都极其恶劣：宽度错误**只在慢轮爆发**（首轮或第 12 轮），一旦爆发 `_async_update_data` 抛异常、`last_update_success=False`、**全部 48 个实体同时变 unavailable**；后缀错误则静默地把已有用户的实体重命名，历史记录断裂。
+这两份契约的失败模式都极其恶劣：宽度错误**只在慢轮爆发**（首轮或第 12 轮），一旦爆发 `_async_update_data` 抛异常、`last_update_success=False`、**全部 36 个实体同时变 unavailable**；后缀错误则静默地把已有用户的实体重命名，历史记录断裂。
 
 这不是理论风险。仓库里记录了一次真实事故（`tests/test_const_contract.py:1-9`）：3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options 列），`coordinator.py` 仍按 5 元组解包，静态测试与单元测试都没抓到，真机部署后每次诊断轮询都抛 `ValueError: too many values to unpack`，整个集成所有实体 unavailable。
 
@@ -36,7 +36,7 @@ principle_scope: module
 ## 适用范围
 
 - `const.py` 的 4 张表：`WRITABLE_SWITCHES`、`WRITABLE_SELECTS`、`AMBIENT_LIGHT_SWITCHES`、`AMBIENT_MODE_OPTIONS`
-- `button.py:26-76` 的 `BUTTON_DEFS`（5 元组，22 行，同属声明式表家族）
+- `button.py:52-73` 的 `BUTTON_DEFS`（5 元组，10 行，同属声明式表家族）
 - 任何新增的「表 + 通用类」组合
 
 ## 规则
@@ -45,7 +45,7 @@ principle_scope: module
 - **改第一列后缀前，先确认它是否已被发布**（查 `__init__.py:146-150` 的 legacy 表与 `strings.json`）。若已发布，必须同时在 legacy 清理表登记旧后缀，否则老用户的实体变成永久 unavailable 的孤儿。
 - **宽度用 AST 静态测试守护，不依赖类型标注**。新表必须登记进 `tests/test_const_contract.py:27-32` 的 `TABLE_SOURCES`，并补进 `:129-136` 的 `expected` 集合。
 - **表项必须与 `strings.json` 的翻译键一一对应**（`switch.py:77` 的 `_attr_translation_key = key`）。缺键不报错，只显示原始键名——属静默劣化。
-- **不要在没有护栏的情况下用「不产生元组解包 AST 节点」的方式消费表**（如 `dict(table)`、`[x for x, _ in table]`）——那样 `test_const_contract` 看不到它。`AMBIENT_MODE_OPTIONS` 正是因此逃逸（`select.py:180`, `:187`），见 risk.md R-SC-06。
+- **不要在没有护栏的情况下用「不产生元组解包 AST 节点」的方式消费表**（如 `dict(table)`、`[x for x, _ in table]`）——那样 `test_const_contract` 看不到它。`AMBIENT_MODE_OPTIONS` 正是因此逃逸（`select.py:124`, `:187`），见 risk.md R-SC-06。
 
 ## 反模式 / 禁止项
 

@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 模块功能树 — pjctl-transport
 # project: "ha-epson-ef-projector"
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 # 说明: 节点名为「业务能力」，不含 EpsonApi/request/probe_state/goto_focus 等代码名。
 #       证据一律相对仓库根。校验: scripts/validate-function-tree.mjs
 # ════════════════════════════════════════════════════════════════════════════
@@ -159,7 +159,7 @@
         - "custom_components/epson_ef/api.py:295-351"
         - "custom_components/epson_ef/api.py:432-448"
         - "custom_components/epson_ef/api.py:466-514"
-        - "custom_components/epson_ef/api.py:634-656"
+        - "custom_components/epson_ef/api.py:636-647"
     children:
     - id: '2001'
       type: function_point

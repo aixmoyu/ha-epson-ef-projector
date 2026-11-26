@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-004
 description: "实体装配必须由 const.py 的声明式元组表驱动（而不是每个实体手写一遍命令名），且每张表必须配一条 AST 契约测试，锁死『表的元组宽度 == 所有消费者的解包宽度』。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 工程
 principle_scope: global
 ---
@@ -12,14 +12,14 @@ principle_scope: global
 
 ## 原则详细描述
 
-本项目有 48 个实体，其中 22 个按钮、11 个开关、4 个选择器、7 个 number 全部由**元组表**生成，而不是逐个手写类：
+本项目有 36 个实体，其中 10 个按钮、11 个开关、4 个选择器、7 个 number 全部由**元组表**生成，而不是逐个手写类：
 
 | 表 | 位置 | 形状 | 消费者 |
 |-|-|-|-|
 | `WRITABLE_SWITCHES` | `const.py:53-66` | 6 × 4 元组 `(suffix, key, get_cmd, set_cmd)` | `switch.py:35-40`（装配）+ `coordinator.py:92-96`（回读） |
 | `WRITABLE_SELECTS` | `const.py:75-92` | 4 × **6** 元组 `(suffix, key, get_cmd, set_cmd, options, labels)` | `select.py:38-41`（装配）+ `coordinator.py:97-101`（回读） |
 | `AMBIENT_LIGHT_SWITCHES` | `const.py:138-142` | 3 × 4 元组 `(suffix, key, icon, kind)` | `switch.py:43-46` |
-| `BUTTON_DEFS` | `button.py:17-83` | 30 × 5 元组 `(suffix, key, icon, cmd_id, params)` | `button.py:94-97` |
+| `BUTTON_DEFS` | `button.py:52-73` | 30 × 5 元组 `(suffix, key, icon, cmd_id, params)` | `button.py:94-97` |
 
 配套的契约测试不是"跑一遍看有没有异常"，而是**用 `ast` 静态比对宽度**：`tests/test_const_contract.py` 解析表定义与所有解包点，断言"表宽度 == 每个 `for a,b,... in TABLE` 的解包宽度"，并锁定已知消费位置不得漂移（`tests/test_const_contract.py:111-145`）。
 

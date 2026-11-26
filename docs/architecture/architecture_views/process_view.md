@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: process-view
 description: "单一 HA 事件循环内三方协作：一个 DataUpdateCoordinator 定时轮询协程、7 个实体平台的嵌入式回调、以及被 HTTP 调用的固件 pjctl 服务（NanoHTTPD 单线程）。全部交互为 await 串行化的请求-响应，无消息总线；跨单元一致性靠「写后乐观改内存 + 慢速诊断轮询回读 + 无读通路项用 RestoreEntity/assumed_state」，全仓仅电源路径有一把 asyncio.Lock，其余写操作无并发保护。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 进程视图（跨单元运行时协作）
@@ -23,7 +23,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 | GP-006 | 任意命令透传（调试服务） | `services.raw_request` ↔ `EpsonApi` ↔ 固件 | 请求-响应 + 事件回传 | 最弱（失败仅写事件，不重试） | §3.1 |
 | GP-007 | 启动装配与不可达降级 | `async_setup_entry` ↔ `EpsonApi` ↔ HA 配置项 | 同步 await + 异常上抛 `ConfigEntryNotReady` | 强一致（setup 失败即整体回滚） | §2 |
 
-**判据说明**：GP-001 的"最终一致"证据是诊断段只在 `_poll_count == 1 or _poll_count % 12 == 0` 时执行（`custom_components/epson_ef/coordinator.py:59`，`DIAGNOSTIC_EVERY_N_POLLS = 12` 见 `custom_components/epson_ef/const.py:222`），而 `settings`/`diag` 在非诊断周期靠 carry-forward 保留旧值（`custom_components/epson_ef/coordinator.py:145`, `:150`）。
+**判据说明**：GP-001 的"最终一致"证据是诊断段只在 `_poll_count == 1 or _poll_count % 12 == 0` 时执行（`custom_components/epson_ef/coordinator.py:59`，`DIAGNOSTIC_EVERY_N_POLLS = 12` 见 `custom_components/epson_ef/const.py:199`），而 `settings`/`diag` 在非诊断周期靠 carry-forward 保留旧值（`custom_components/epson_ef/coordinator.py:145`, `:150`）。
 
 ---
 
@@ -50,7 +50,7 @@ graph LR
 
     SETUP -->|"启动探测 get_product_name / get_serial_number"| API
     CF -->|"连通性校验（临时 EpsonApi）"| API
-    COORD -->|"probe_state + 33 条读命令"| API
+    COORD -->|"probe_state + 32 条读命令"| API
     ENT -->|"set_* / send_keyevent / goto_focus"| API
     SVC -->|"任意命令透传"| API
     API --> SESS
@@ -66,8 +66,8 @@ graph LR
 | `Ef50MediaPlayer._probe` / `_wait_and_reconcile` | `EpsonApi.probe_state` / `wait_for_state` | 同上（1s 间隔轮询） | 单次 probe ≈ 最长 15s；`timeout_s=10` 预算 | 不重试，超期返回 `False` | 确认失败 → `async_request_refresh()` 回落到协调器真值 | `custom_components/epson_ef/media_player.py:151-176`; `custom_components/epson_ef/api.py:278-293` |
 | `Ef50LightOutputNumber` / `Ef50RefreshTimerNumber` / `Ef50ColorGainNumber` / `Ef50FocusNumber` setters | `EpsonApi.set_*` / `goto_focus` | 同上 | 10s（对焦为多次 10s） | 仅 Digest 重试 | `EpsonApiError` → `HomeAssistantError`，本地值保持不变 | `custom_components/epson_ef/number.py:123-133`, `:210-220`, `:282-301`, `:379-396` |
 | `Ef50ConfigSwitch._write` / `Ef50ConfigSelect.async_select_option` | `EpsonApi.request`（`CONFIG_SET_*`） | 同上 | 10s | 仅 Digest 重试 | 捕获 `Exception` 转 `HomeAssistantError` | `custom_components/epson_ef/switch.py:104-111`; `custom_components/epson_ef/select.py:104-113` |
-| 乐观写实体（氛围灯 ×3、自动对比度、测试图案、氛围亮度、氛围模式、静音） | `EpsonApi.set_ambient_light` / `set_auto_contrast` / `set_test_pattern` / `send_keyevent` | 同上 | 10s | 仅 Digest 重试 | 失败抛错且**不翻转**本地状态（状态只在写成功后改） | `custom_components/epson_ef/switch.py:171-179`, `:232-240`, `:292-300`; `custom_components/epson_ef/number.py:449-458`; `custom_components/epson_ef/select.py:208-219` |
-| `Ef50Button.async_press` | `EpsonApi.request` | 同上 | 10s | 仅 Digest 重试 | `EpsonApiError` → `HomeAssistantError`；实体 `available` 恒为 `True` | `custom_components/epson_ef/button.py:131-142` |
+| 乐观写实体（氛围灯 ×3、自动对比度、测试图案、氛围亮度、氛围模式、静音） | `EpsonApi.set_ambient_light` / `set_auto_contrast` / `set_test_pattern` / `send_keyevent` | 同上 | 10s | 仅 Digest 重试 | 失败抛错且**不翻转**本地状态（状态只在写成功后改） | `custom_components/epson_ef/switch.py:171-179`, `:232-240`, `:292-300`; `custom_components/epson_ef/number.py:449-452`; `custom_components/epson_ef/select.py:152-162` |
+| `Ef50Button.async_press` | `EpsonApi.request` | 同上 | 10s | 仅 Digest 重试 | `EpsonApiError` → `HomeAssistantError`；实体 `available` 恒为 `True` | `custom_components/epson_ef/button.py:123-132` |
 | `services.send_key` / `raw_request` | `EpsonApi.send_keyevent` / `request` | 同上 | 10s | 仅 Digest 重试 | `raw_request` 吞掉所有异常写进事件（`services.py:63-70`）；`send_key` 直接上抛 | `custom_components/epson_ef/services.py:43-70` |
 | `async_setup_entry` | `EpsonApi.get_product_name` / `get_serial_number` / `coordinator.async_config_entry_first_refresh` | 同上 | 10s 每条 | 无 | 见下方"降级实测" | `custom_components/epson_ef/__init__.py:170-193` |
 | `Ef50ConfigFlow.async_step_user` | 临时 `EpsonApi.get_product_name` | 同上 | 10s | 无 | `finally: await api.close()`，`product is None` → `errors["base"]="cannot_connect"` | `custom_components/epson_ef/config_flow.py:38-54` |
@@ -159,7 +159,7 @@ graph LR
 | 场景 | 策略 | 实现方式 | 适用流程 |
 |-|-|-|-|
 | 可读设置写入（光源亮度/刷新定时器/投影方式/色温/动态对比度/投影偏好/色彩增益/配置开关） | **乐观写内存 + 慢轮询回读收敛** | 写成功后 `coordinator.data["settings"][suffix] = value`（`number.py:129-131`, `switch.py:109-110`, `select.py:110-111`），随后（部分实体）`await coordinator.async_request_refresh()`；下一轮诊断轮询用固件真值 `merged.update(settings)` 覆盖（`coordinator.py:116-119`） | GP-004 |
-| 无读通路项（氛围灯开/关/亮度/模式、自动对比度、测试图案、静音） | **纯本地记忆，不收敛** | 写成功后翻本地属性 + `async_write_ha_state()`（`switch.py:178-179`, `number.py:457-458`, `select.py:218-219`, `media_player.py:215-216`）；`assumed_state = True`（`switch.py:166-169`, `number.py:444-447`, `select.py:203-206`）；跨重启恢复用 `RestoreEntity.async_get_last_state()`（`switch.py:158-164`, `number.py:433-442`, `select.py:197-201`, `media_player.py:75-81`） | GP-005 |
+| 无读通路项（氛围灯开/关/亮度/模式、自动对比度、测试图案、静音） | **纯本地记忆，不收敛** | 写成功后翻本地属性 + `async_write_ha_state()`（`switch.py:178-179`, `number.py:452`, `select.py:162`, `media_player.py:215-216`）；`assumed_state = True`（`switch.py:166-169`, `number.py:444-447`, `select.py:147-150`）；跨重启恢复用 `RestoreEntity.async_get_last_state()`（`switch.py:158-164`, `number.py:433-442`, `select.py:141-145`, `media_player.py:75-81`） | GP-005 |
 | 电源状态（唯一的强一致写） | **动作前 probe → 盲发 toggle → 动作后确认轮询 → 未确认则回落刷新** | `async_turn_on/off` 先 `_probe()` 再发 `KEYCODE_POWER`，然后 `wait_for_state(target, 10s)`；超期 `async_request_refresh()`（`media_player.py:178-199`, `:165-176`） | GP-002 |
 | 对焦绝对定位（固件无 set-absolute） | **开环脉冲 + 闭环回读** | 回读 POS → 算余量 → `MAX/MIN` 连续移动 → `sleep(余量/65)` → `OFF` → 再回读，最多 14 次，容差 3（`api.py:544-584`；常量 `const.py:124-133`） | GP-003 |
 | 并发控制 | **几乎无**：全仓仅 1 把 `asyncio.Lock`（电源路径），无 `Semaphore`、无全局写锁、无请求队列 | `self._power_lock = asyncio.Lock()`（`media_player.py:73`），只包住 `async_turn_on`/`async_turn_off`（`:180`, `:192`） | GP-002 有保护；GP-001/003/004/005/006 **无保护** |
@@ -236,7 +236,7 @@ sequenceDiagram
 - 投影仪不可达：`probe_state` 把 `EpsonApiTimeout` 归一化为 `EpsonApiUnavailable`（`api.py:240-246`），`_probe` 再转 `HomeAssistantError("投影仪不可达")`（`media_player.py:154-156`）——**不会误发 toggle**。
 - 已处于目标状态：直接 `return`，不发命令（`media_player.py:182-183`, `:194-195`）。
 - 深层待机导致引擎查询挂死：`CONFIG_GET_LIGHT_TIME` 5s 超时即判 `off`（`api.py:252-259`），注释明确"绝不能上报为不可达"（`api.py:248-251`）。
-- 竞态防护的**真实边界**：锁是**每实体实例**的（`media_player.py:73` 在 `__init__` 内），因此它只序列化"同一台设备的 turn_on/off"。绕过它的路径有两条，均无锁、可并发发出同一个盲 toggle（keycode 26）：(a) `services.send_key` 传 `key="POWER"`（`const.py:206` → `services.py:49-54`）；(b) `services.raw_request` 直接发 `NOTIFY_KEYEVENT` params="26"（`services.py:64`）。注：`button.py` 的按键表**不含** POWER 键（仅 home/back/menu/input_source 四个 `NOTIFY_KEYEVENT`，`button.py:18-22`），故按钮平台本身不构成该竞态源。
+- 竞态防护的**真实边界**：锁是**每实体实例**的（`media_player.py:73` 在 `__init__` 内），因此它只序列化"同一台设备的 turn_on/off"。绕过它的路径有两条，均无锁、可并发发出同一个盲 toggle（keycode 26）：(a) `services.send_key` 传 `key="POWER"`（`const.py:189` → `services.py:49-54`）；(b) `services.raw_request` 直接发 `NOTIFY_KEYEVENT` params="26"（`services.py:64`）。注：`button.py` 的按键表**不含** POWER 键（仅 home/back/menu 三个 `NOTIFY_KEYEVENT`，`button.py:54-56`），故按钮平台本身不构成该竞态源。
 
 **状态机（电源，含降级）**
 
@@ -289,7 +289,7 @@ sequenceDiagram
             FS->>FW: POST CONFIG_SET_FOCUS OFF
             G->>G: await asyncio.sleep(0.45) 等待停稳 (api.py:583)
         end
-        CO-->>FW: 周期到了 → probe_state + 33 条读命令
+        CO-->>FW: 周期到了 → probe_state + 32 条读命令
         Note over CO,FW: 与对焦脉冲无互斥，可能读到移动中的 POS
     end
     G->>FW: 预算耗尽后再回读一次 POS (api.py:584)
@@ -403,7 +403,7 @@ sequenceDiagram
 | `Ef50ConfigSelect` | `settings.<suffix>` | 乐观写 + refresh | `select.py:92-107` |
 | `Ef50ConfigSwitch` | `settings.<suffix>` | 乐观写，**不发 refresh** → 最迟等下一个诊断周期（≤12 轮 ≈180s） | `switch.py:90-111` |
 | `Ef50FocusNumber` | `settings.focus_position`（**仅诊断周期更新**） | 闭环回读 + 写回 settings + refresh | `number.py:262-301` |
-| `Ef50AmbientLightSwitch` ×3 / `Ef50AutoContrastSwitch` / `Ef50TestPatternSwitch` / `Ef50AmbientBrightnessNumber` / `Ef50AmbientModeSelect` / media_player 静音 | **无** | 仅本地记忆 + `assumed_state=True`（静音无 `assumed_state`，用 RestoreEntity） | `switch.py:158-179`, `:219-240`, `:279-300`; `number.py:433-458`; `select.py:197-219`; `media_player.py:75-81`, `:207-216` |
+| `Ef50AmbientLightSwitch` ×3 / `Ef50AutoContrastSwitch` / `Ef50TestPatternSwitch` / `Ef50AmbientBrightnessNumber` / `Ef50AmbientModeSelect` / media_player 静音 | **无** | 仅本地记忆 + `assumed_state=True`（静音无 `assumed_state`，用 RestoreEntity） | `switch.py:158-179`, `:219-240`, `:279-300`; `number.py:433-452`; `select.py:141-162`; `media_player.py:75-81`, `:207-216` |
 
 ---
 
@@ -425,8 +425,8 @@ sequenceDiagram
 
 | ID | 风险 | 事实与证据 |
 |-|-|-|
-| R-01 | **单轮轮询可远超轮询间隔** | 诊断轮 32 次串行 HTTP（17 diag + 6 switch + 4 select + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode）各 10s 上限，且 `_async_update_data` 无聚合超时（`coordinator.py:59-132`）。最坏 ≈320s，而 `update_interval` 默认 15s（`const.py:11`）→ 慢周期内所有实体的 `async_request_refresh` 与下一轮定时全部排队 |
-| R-02 | **写操作无并发保护（除电源）** | 全仓仅 `media_player.py:73` 一把 `asyncio.Lock`；`number/switch/select/button/services` 的写路径均直接 `await api.request`（如 `number.py:126`, `switch.py:106`, `select.py:107`, `button.py:138`, `services.py:64`），无 `Semaphore`、无写队列 |
+| R-01 | **单轮轮询可远超轮询间隔** | 诊断轮 32 次串行 HTTP（17 diag + 6 switch + 3 select + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode）各 10s 上限，且 `_async_update_data` 无聚合超时（`coordinator.py:59-132`）。最坏 ≈320s，而 `update_interval` 默认 15s（`const.py:11`）→ 慢周期内所有实体的 `async_request_refresh` 与下一轮定时全部排队 |
+| R-02 | **写操作无并发保护（除电源）** | 全仓仅 `media_player.py:73` 一把 `asyncio.Lock`；`number/switch/select/button/services` 的写路径均直接 `await api.request`（如 `number.py:126`, `switch.py:106`, `select.py:107`, `button.py:128`, `services.py:64`），无 `Semaphore`、无写队列 |
 | R-03 | **色彩增益"读-改-写"竞态** | 三通道共享一条 GET，写入是"取当前三元组→替换单通道→写整串"（`number.py:381-389`）。两个通道并发写会读到同基线，后写覆盖先写 → 丢一次修改。实体无锁（`number.py:379`） |
 | R-04 | **对焦无重入保护 + 与轮询争用固件** | `goto_focus` 循环内无锁（`api.py:561-583`），并发两次定位会交错 `MAX/MIN/OFF`；且 sleep 期间（最长 2.0s + 0.45s/轮）协调器可插进来发 33 条读命令（`coordinator.py:59`），而固件是单线程 NanoHTTPD（引擎查询挂起会阻塞整个服务） |
 | R-05 | **确认超时不是硬上限** | `wait_for_state` 先 probe 再判 deadline（`api.py:284-292`），单次 probe 最长 15s（10s+5s），`timeout_s=10` 实际可跑到 ~25s；`_POWER_CONFIRM_TIMEOUT=10`（`media_player.py:27`）因此是软预算 |
@@ -446,4 +446,4 @@ sequenceDiagram
 - **[待确认-2]** 深待机下 `CONFIG_GET_LIGHT_TIME` 的"服务端直接断连"与"5s 客户端超时"在本集成里被归为一类（`api.py:252-259`），无法区分"设备关着"与"设备卡住"——`probe_state` 的注释选择了前者（`api.py:248-251`）。
 - **[待确认-3]** 两次 `_async_update_data` 是否可能重叠（`async_request_refresh` 与定时器撞车时）—— 属 HA `DataUpdateCoordinator` 框架行为，本环境未安装 `homeassistant`（`import homeassistant` → `ModuleNotFoundError`），无法用代码验证；本文档只断言"单次刷新内部串行"这一可验证事实。
 - **[观察]** `_TIMEOUT`（`api.py:37`）为死常量；`coordinator.py:120` 的 `if state == "on":` 嵌在 `coordinator.py:61` 的同条件内，属冗余判断（AST 校验确认）。
-- **[观察]** `binary_sensor.available` 恒 `True`（`binary_sensor.py:49-52`）、`button.available` 恒 `True`（`button.py:131-134`）——这是有意的"降级可见性"设计，不是遗漏。
+- **[观察]** `binary_sensor.available` 恒 `True`（`binary_sensor.py:49-52`）、`button.available` 恒 `True`（`button.py:123-126`）——这是有意的"降级可见性"设计，不是遗漏。

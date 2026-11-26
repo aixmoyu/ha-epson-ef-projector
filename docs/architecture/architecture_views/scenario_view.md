@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: scenario-view
 description: "六个端到端场景串起四张视图：电源盲 toggle 的强一致确认、对焦无绝对定位命令下的闭环、可写设置的乐观写+慢轮询收敛、无读通路能力的纯本地记忆、序列号优先的设备身份建立与漂移迁移、以及绕过实体的任意命令注入。每个场景都落到同一套『单轮询源 + 单一 HTTP 适配器』结构上。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 ---
 
 # 场景视图（核心场景与四视图追溯）
@@ -20,7 +20,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 | SC-003 | 可写设置的读取与变更（亮度/投影方式/增益…） | HA 用户、自动化 | `entity-number`/`entity-select`/`entity-switch`, `contract-const`, `state-coordinator`, `pjctl-transport` | 最终一致（≤12 个轮询周期） | §2.3 |
 | SC-004 | 无读通路能力的写入（氛围灯/自动对比度/测试图案/静音） | HA 用户 | `entity-switch`/`entity-select`/`entity-number`/`entity-media-player`, `pjctl-transport` | 无收敛（assumed_state + 本地记忆） | §2.4 |
 | SC-005 | 首次接入、设备身份建立与地址漂移迁移 | HA 用户（配置流 / 重新配置） | `entry-core`, `entry-config-flow`, `pjctl-transport`, `diagnostics` | 强一致（身份写入成功才继续装配） | §2.5 |
-| SC-006 | 任意命令注入与快捷动作（22 按钮 + 2 服务） | HA 用户、自动化、调试者 | `entity-button`, `action-services`, `pjctl-transport`, `contract-const` | 最弱（即发即弃，失败仅抛错/写事件） | §2.6 |
+| SC-006 | 任意命令注入与快捷动作（10 按钮 + 2 服务） | HA 用户、自动化、调试者 | `entity-button`, `action-services`, `pjctl-transport`, `contract-const` | 最弱（即发即弃，失败仅抛错/写事件） | §2.6 |
 
 ## 2. 场景详述
 
@@ -93,7 +93,7 @@ sequenceDiagram
             G->>FW: finally SET_FOCUS "OFF"
             G->>G: sleep(FOCUS_SETTLE_POLL=0.45)
         end
-        CO-->>FW: 周期到 → probe_state + 33 条读命令（与脉冲无互斥）
+        CO-->>FW: 周期到 → probe_state + 32 条读命令（与脉冲无互斥）
     end
     N->>N: 回写 settings["focus_position"]（number.py:297）
     N->>CO: async_request_refresh()（number.py:301）
@@ -158,10 +158,10 @@ sequenceDiagram
 | 能力 | 写命令 | 读通路 | 状态表达 | 证据 |
 |-|-|-|-|-|
 | 氛围灯开/关 ×3 | `CONFIG_SET_AMBIENT_LIGHT` `"3|4|5 <01> [48]"` | 无（本机全 FAIL） | `assumed_state=True` + RestoreEntity | `api.py:387-398`；`switch.py:120-185` |
-| 氛围灯亮度 | `"9 <0-255> 48"`（UI 0–100 ×2.55） | 无 | `assumed_state=True` + RestoreEntity | `api.py:400-409`；`const.py:155-156`；`number.py:399-458` |
-| 氛围灯模式 | `"1 <mode> 48"`（MODE1..4=3..6） | 无 | `assumed_state=True` + RestoreEntity | `api.py:411-418`；`const.py:158-163`；`select.py:167-219` |
+| 氛围灯亮度 | `"9 <0-255> 48"`（UI 0–100 ×2.55） | 无 | `assumed_state=True` + RestoreEntity | `api.py:400-409`；`const.py:155-156`；`number.py:399-452` |
+| 氛围灯模式 | `"1 <mode> 48"`（MODE1..4=3..6） | 无 | `assumed_state=True` + RestoreEntity | `api.py:411-418`；`const.py:158-163`；`select.py:111-162` |
 | 自动对比度 | `CONFIG_SET_AUTO_CONTRAST` `"1"/"0"` | 无（带参 GET 亦 FAIL） | `assumed_state=True` + RestoreEntity | `api.py:623-632`；`switch.py:188-246` |
-| 测试图案 | `CONFIG_GET_ESCVP` `"2 AGPATTERN 01/00"` | 无 | `assumed_state=True` + RestoreEntity | `api.py:420-430`；`const.py:182-183`；`switch.py:249-306` |
+| 测试图案 | `CONFIG_GET_ESCVP` `"2 AGPATTERN 01/00"` | 无 | `assumed_state=True` + RestoreEntity | `api.py:420-430`；`const.py:182-183`；`switch.py:249-304` |
 | 静音 | `NOTIFY_KEYEVENT 164`（纯 toggle） | 无 | RestoreEntity（**未**设 assumed_state） | `media_player.py:50`, `:75-81`, `:207-216` |
 
 **已知漂移源**：物理遥控器或机身菜单改了状态，集成无从得知（无推送、无读通路），只能等用户手动同步——`media_player.py:208-211` 的注释明确承认这一点。
@@ -192,15 +192,15 @@ flowchart TD
 
 ### 2.6 SC-006 任意命令注入与快捷动作
 
-**触发者**：22 个按钮实体（`POWER/HOME/BACK/MENU` 按键、`NOTIFY_*` 功能触发、`CONFIG_SET_QC` 几何步进）、`epson_ef.send_key` 服务、`epson_ef.raw_request` 服务。
-**参与单元**：`Ef50Button` 表驱动（`BUTTON_DEFS` 30 条）、`services.py`、`EpsonApi.request`。
+**触发者**：10 个按钮实体（`HOME/BACK/MENU` 导航键、单次自动对焦、`CONFIG_SET_QC` 几何步进）、`epson_ef.send_key` 服务、`epson_ef.raw_request` 服务。
+**参与单元**：`Ef50Button` 表驱动（`BUTTON_DEFS` 10 条）、`services.py`、`EpsonApi.request`。
 
 **一致性策略**：最弱——投影仪回 `resultCode=0` 即算成功，**不代表动作生效**；`raw_request` 把任意异常吞进事件。
 
 | 入口 | 契约 | 失败表达 | 证据 |
 |-|-|-|-|
-| 按钮 | `(suffix, key, icon, cmd_id, params)` 5 元组表 | `EpsonApiError` → `HomeAssistantError`；实体 `available` 恒 `True`（离线也保留按钮以给出明确错误） | `button.py:17-83`；`:131-142` |
-| `send_key` | `key` 可按键名（`KEYCODES`）或纯数字 keycode | 未知键 → `HomeAssistantError` | `services.py:43-54`；`const.py:195-219` |
+| 按钮 | `(suffix, key, icon, cmd_id, params)` 5 元组表 | `EpsonApiError` → `HomeAssistantError`；实体 `available` 恒 `True`（离线也保留按钮以给出明确错误） | `button.py:52-73`；`:131-142` |
+| `send_key` | `key` 可按键名（`KEYCODES`）或纯数字 keycode | 未知键 → `HomeAssistantError` | `services.py:43-54`；`const.py:178-199` |
 | `raw_request` | 任意 `id` + `params`，**无白名单、无 admin 校验** | 异常吞成 `{"error": ...}`，经 `epson_ef_response` 事件返回；仓库内无订阅者 | `services.py:56-70` |
 
 **危险面（代码已记录但未拦截）**：`raw_request` 可发送 `CONFIG_SET_REFRESH "1"`（立即刷新并关机，`api.py:481-488` 警示）、`CONFIG_SET_AMBIENT_LIGHT "255"`（清用户光效配置，`const.py:149`）、`CONFIG_GET_ESCVP` 工厂 NVRAM 写命令（仓库未暴露该命令，但 `raw_request` 服务可透传）。
@@ -223,10 +223,10 @@ flowchart TD
 | 可用性：设备离线可区分 | 离线判 `unavailable`，且"关机"与"卡死"不得混淆 | 4 类异常语义化 + liveness 超时归一化（`api.py:40-61`, `:236-246`）；`Ef50ConnectivitySensor` 恒 `available=True` 以便报告"离线"（`binary_sensor.py:49-52`） | 达成；但服务端真挂起时仍只能等 10s 超时，无熔断 |
 | 时效性：状态可见延迟 | 电源态 ≤ 1 个 `poll_interval`（默认 15s，可配 5–300s，`const.py:11`、`config_flow.py:63`） | 快探针每轮执行（`coordinator.py:42-56`） | 达成；但慢诊断最坏 ≈320s（32×10s）可挤占后续轮询 |
 | 一致性：可读设置 | 写后 ≤ 12 个轮询周期收敛到固件真值 | 乐观写 + 慢诊断回读覆盖（`coordinator.py:116-119`） | 达成；`Ef50ConfigSwitch` 不主动 refresh，收敛偏慢 |
-| 可辨识性：不可读状态 | 不得伪装成真值 | `assumed_state=True`（`switch.py:166-169`、`number.py:444-447`、`select.py:203-206`）+ `raw_value` 属性 | 达成；静音例外（无 `assumed_state`，`media_player.py:50`） |
+| 可辨识性：不可读状态 | 不得伪装成真值 | `assumed_state=True`（`switch.py:166-169`、`number.py:444-447`、`select.py:147-150`）+ `raw_value` 属性 | 达成；静音例外（无 `assumed_state`，`media_player.py:50`） |
 | 可运维性：身份稳定 | IP 变化不丢历史 | serial 优先 + `Store` 钉住 + 注册表迁移（`__init__.py:42-120`） | 达成；config entry unique_id 仍用 host:port 是缺口 |
 | 可排障性 | 无需复现即可定位协议问题 | `diagnostics.py` 导出 entry/identity/coordinator/api 四段，四段全部经 `async_redact_data` 脱敏 host / base_id / serial（`diagnostics.py:15-62`）+ `raw_request` 透传 | 达成；无 trace/span |
-| 可测试性 | 协议层可离线验证 | `api.py` 零 HA 依赖（`api.py:1-3`）+ 64 用例离线套件 | 达成；HA 装配层零覆盖（CI 不装 homeassistant，`.github/workflows/tests.yml:18`） |
+| 可测试性 | 协议层可离线验证 | `api.py` 零 HA 依赖（`api.py:1-3`）+ 73 用例离线套件 | 达成；HA 装配层零覆盖（CI 不装 homeassistant，`.github/workflows/tests.yml:18`） |
 
 ## 5. 未覆盖 / 待确认场景
 

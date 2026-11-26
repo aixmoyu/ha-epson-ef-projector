@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-005
 description: available 只能表达"该实体的数据源当前是否可信"，不能用 coordinator.last_update_success 冒充"设备是否唤醒"。待机时 HTTP 仍可达、last_update_success 为 True，因此照抄基类语义的 7 处覆写对"仅唤醒可读"的读数（对焦/亮度/增益）不做任何屏蔽；并且只有 connectivity 与 button 两处"恒 True"是有意例外，必须保留注释说明理由。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---
@@ -19,7 +19,7 @@ principle_scope: module
 | 位置 | 实现 | 理由 | 证据 |
 |-|-|-|-|
 |`Ef50ConnectivitySensor`|`return True`|"连通性传感器必须保持可用才能报告 off"；若跟随 `last_update_success`，设备离线时实体会变 unavailable，永远无法表达"离线"这一事实|`binary_sensor.py:49-52`|
-|`Ef50Button`|`return True`|"离线时保留按钮，按下会得到明确错误而不是被禁用"|`button.py:131-134`|
+|`Ef50Button`|`return True`|"离线时保留按钮，按下会得到明确错误而不是被禁用"|`button.py:123-126`|
 
 **B 类：与基类等价（7 处，冗余）**
 
@@ -41,12 +41,12 @@ def available(self) -> bool:
 ## 为什么要这样
 
 1. **`available` 是自动化可见的信号**。用户写 `condition: state: entity_id: number.focus_position, state: unavailable` 来防误操作，如果 available 不随唤醒态变化，这条自动化就失效，用户会对着一张黑屏拖对焦滑条。
-2. **"保留按钮以便报错"与"保留数值以便报错"价值不同**。按钮是**动作**，失败时能立刻给出明确错误（`button.py:139-141`）；数值是**读值**，available 时用户会当真值相信。两者的例外处理不应对称。
+2. **"保留按钮以便报错"与"保留数值以便报错"价值不同**。按钮是**动作**，失败时能立刻给出明确错误（`button.py:131-132`）；数值是**读值**，available 时用户会当真值相信。两者的例外处理不应对称。
 3. **注释与实现不符比没有注释更糟**。`number.py:259` 声称"只在唤醒状态有效"，会让后来者以为已有保护而不再添加。
 
 ## 适用范围
 
-- 全部 48 个实体的 `available` 实现。
+- 全部 36 个实体的 `available` 实现。
 - 特别针对"仅唤醒可读"的项：`number.focus_position`、`number.light_output`、`number.color_gain_*`、`sensor.light_hours`、`sensor.distance`。
 - 恒 True 的两个例外（connectivity / button）**适用但不得修改**，改动需先反驳其注释中的理由。
 

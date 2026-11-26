@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-004
 description: "门禁的每一项都必须在『范围』与『规则集』两处显式声明，且声明范围要与保障承诺一致：CI 只查 custom_components+tests 的 F,E9 规则，因此 tools/ 与 HA 装配层的缺陷天然不可见——不得以 CI 全绿推断代码正确，也不得在保障缺口存在时扩大『已验证』的说法。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 治理
 principle_scope: module
 ---
@@ -20,7 +20,7 @@ principle_scope: module
 - name: Lint
   run: ruff check custom_components tests --select F,E9   # :21  范围不含 tools/
 - name: Unit tests
-  run: python -m unittest discover -s tests -v  # :24  64 用例
+  run: python -m unittest discover -s tests -v  # :24  73 用例
 ```
 
 三个维度都被写死在命令行里，没有配置文件（仓库无 `pyproject.toml`、`ruff.toml`、`setup.cfg`、`requirements*.txt`，`ls` 实测均不存在）。这既保证了"CI 语义唯一"，也导致了"本地 `ruff check .` 与 CI 语义不同"的认知错位。
@@ -52,7 +52,7 @@ principle_scope: module
 
 - **范围与规则集必须写在命令行**，不得依赖隐式默认（仓库刻意没有 ruff/ pytest 配置文件）。
 - **新增门禁项前先评估既存违规**：把 `tools/` 纳入 `ruff check .` 之前，必须先清掉 2 个 F401 与 1 个 F821，否则 CI 立刻变红——这是"扩大范围需要先还债"的显式成本。
-- **保障声明必须与范围同宽**：不得用"64 用例全绿"暗示"集成可用"；不得用"CI 通过"暗示"`tools/` 可用"。
+- **保障声明必须与范围同宽**：不得用"73 用例全绿"暗示"集成可用"；不得用"CI 通过"暗示"`tools/` 可用"。
 - **测试命令必须用 `discover`（或模块路径）而不是文件直跑**：`python3 tests/test_api.py` 只跑 42/51、`python3 tests/test_regressions.py` 只跑 7/9（实测），而两者 rc 均为 0。CI 用的 `python -m unittest discover -s tests -v` 是唯一能跑满 64 的方式。
 - **`pyflakes` 必须由 CI 显式安装**：`tests/test_static.py` 依赖它，缺失时 `skipTest` 会让唯一用例静默消失（实测 skipped=1、rc=0）。CI 的 `pip install ... pyflakes`（`:18`）是这条保障的唯一支柱。
 

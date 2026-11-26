@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-006
 description: "设备身份必须与网络地址解耦：优先用固件序列号作实体/设备的唯一标识并持久化到 HA Store（不写进 config entry，以免触发 reload）；地址只是可『重新配置』的参数。身份变更时必须主动迁移注册表，而不是留给用户重建。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: global
 ---

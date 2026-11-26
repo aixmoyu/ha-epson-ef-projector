@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-005
 description: "电源控制没有 set-power 命令，只有盲 toggle 键 KEYCODE_POWER(26)，因此 turn_on/turn_off 实现为『加锁 + 动作前探测 + 盲发 + 动作后确认轮询 + 超期回落刷新』，把幂等性建立在探测而非幂等键上。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 status: accepted
 title: "盲 toggle 电源键的先探测后发送策略"
 date: 2026-11-07

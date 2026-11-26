@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-001
 
 description: "Digest 认证采用『被动挑战 + 进程内缓存 nonce + 每请求递增 nc + 401 单次重试』：首次请求裸发，收到 401 才解析并缓存三元组；此后每条命令直接带 Authorization 头；仅当 401（attempt 0）或传输层失败时重建/清空缓存。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 status: accepted
 

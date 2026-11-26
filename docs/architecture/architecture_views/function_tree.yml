@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 全局功能树 — ha-epson-ef-projector
 # project: "ha-epson-ef-projector"
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 #
 # 本文件是 5 个模块 function_tree.yml 的**业务视角合并结果**：
 #   entry-core / pjctl-transport / state-coordinator / entity-platforms /
@@ -18,12 +18,12 @@
 #   · 合并 M2「定位对焦马达至目标位置」：pjctl-transport 的 `goto_focus`
 #     （api.py:544-584）与 entity-platforms 的 `Ef50FocusNumber`（number.py:282-301）
 #     是同一业务能力的算法层与入口层 → 合并。
-#   · 合并 M3「注入遥控按键」：entity-platforms 的 22 个按钮（button.py:17-83）与
+#   · 合并 M3「注入遥控按键」：entity-platforms 的 10 个按钮（button.py:52-73）与
 #     media_player 的媒体键（media_player.py:201-228）、entry-core 的 `send_key`
 #     服务（services.py:43-54）三者共用 `NOTIFY_KEYEVENT` 通路（api.py:327-328），
 #     属于同一业务能力的不同入口 → 合并，入口差异降级为 function_point。
 #   · 合并 M4「暴露投影仪诊断读数」：state-coordinator 的慢诊断段（coordinator.py:59-132）、
-#     entity-platforms 的 sensor/media_player 属性（sensor.py:67-121、
+#     entity-platforms 的 sensor/media_player 属性（sensor.py:67-120、
 #     media_player.py:109-136）、entry-core 的 diagnostics（diagnostics.py:12-39）
 #     是同一条「采集 → 投影 → 导出」链 → 合并。
 #   · 不合并 N1「验证协议语义」与「判定投影仪电源状态」：前者是测试设施
@@ -186,7 +186,7 @@
         code_mapping:
           - "custom_components/epson_ef/api.py:295-361"
           - "custom_components/epson_ef/api.py:466-514"
-          - "custom_components/epson_ef/api.py:634-656"
+          - "custom_components/epson_ef/api.py:636-647"
       children:
       - id: '13101'
         type: function_point
@@ -407,7 +407,7 @@
         spec: "`PLATFORMS` 7 项（`__init__.py:24-27`）；监听器只做 `async_reload`（`:209-210`）。"
         input: 已发布的 hass.data
         process: forward → register services → add listener
-        output: 48 实体 + 2 服务 + 监听
+        output: 36 实体 + 2 服务 + 监听
       - id: '2111'
         type: function_spec
         name: 装配顺序即契约
@@ -603,14 +603,14 @@
         keywords: ["polling", "dual_speed", "carry_forward", "snapshot"]
         code_mapping:
           - "custom_components/epson_ef/coordinator.py:37-154"
-          - "custom_components/epson_ef/const.py:222"
+          - "custom_components/epson_ef/const.py:199"
       children:
       - id: '3101'
         type: function_point
         name: 快慢双速节流
-        description: 每轮 2 条 HTTP（探电源 + 灯时）；每 12 轮追加约 33 条只读命令；稳态平均约 4.75 条/轮。
-        spec: "`coordinator.py:59`；`DIAGNOSTIC_EVERY_N_POLLS = 12`（`const.py:222`）。"
-        constraint: 慢轮最坏 ≈330–355s 远超默认 15s 间隔，且无整轮超时预算（risk.md R-09）。
+        description: 每轮 2 条 HTTP（探电源 + 灯时）；每 12 轮追加 32 条只读命令；稳态平均约 4.5 条/轮。
+        spec: "`coordinator.py:59`；`DIAGNOSTIC_EVERY_N_POLLS = 12`（`const.py:199`）。"
+        constraint: 慢轮最坏 ≈320s 远超默认 15s 间隔，且无整轮超时预算（risk.md R-09）。
         input: 定时器
         process: 计数判定 → 分支
         output: 快/慢轮数据
@@ -741,10 +741,10 @@
       node_context:
         keywords: ["keyevent", "keycode", "button_entities", "send_key_service"]
         code_mapping:
-          - "custom_components/epson_ef/button.py:17-83"
+          - "custom_components/epson_ef/button.py:52-73"
           - "custom_components/epson_ef/media_player.py:201-228"
           - "custom_components/epson_ef/services.py:43-54"
-          - "custom_components/epson_ef/const.py:195-219"
+          - "custom_components/epson_ef/const.py:178-199"
       children:
       - id: '4201'
         type: function_point
@@ -758,7 +758,7 @@
         type: function_point
         name: 菜单导航与功能面板
         description: HOME/BACK/MENU/方向键与一批 `NOTIFY_APP_*` 功能触发（手动对焦、梯形校正、屏幕适配、蓝牙音箱模式等）。
-        spec: "`button.py:17-83` 的 30 条 `BUTTON_DEFS`。"
+        spec: "`button.py:52-73` 的 10 条 `BUTTON_DEFS`。"
         constraint: 部分按钮效果固件可能忽略（如 `input_source` 的 HDMI 键，`button.py:21` 注释），实体 `available` 恒 True 以便给出明确错误而非禁用。
         input: 用户点击
         process: 表驱动单次下发
@@ -809,27 +809,6 @@
         type: function_constraint
         name: 静音态不可读
         description: 固件无静音状态查询，物理遥控器改动后必漂移；实体用 RestoreEntity 但未声明 `assumed_state`（与「不可知状态必须诚实暴露」原则的现存偏差）。
-    - id: '44'
-      type: function
-      name: 设定启动模式
-      description: 把「节能/快速启动」两个中文选项与固件 0/1 原始值双向映射后写入，并保留原始值属性供核对。
-      module_refs: ["entity-platforms", "state-coordinator"]
-      depends_on: ["32", "132"]
-      node_context:
-      keywords: ["standby_mode", "option_mapping", "raw_value"]
-      code_mapping:
-        - "custom_components/epson_ef/select.py:116-164"
-        - "custom_components/epson_ef/const.py:27-45"
-      children:
-      - id: '4401'
-        type: function_point
-        name: 选项与原始值互转
-        description: 0=节能 / 1=快速启动；映射依据固件菜单定义，原始值始终暴露。
-        spec: "`const.py:27-45`；实体 `select.py:143-150`。"
-        constraint: 若实际设备映射相反，用户可通过 `raw_value` 属性核对——这是「不臆造语义」的落地方式。
-        input: 中文选项
-        process: 双向映射
-        output: 固件原始值
   - id: '5'
     type: directory
     name: 画面控制
@@ -870,7 +849,7 @@
     - id: '52'
       type: function
       name: 调整画面档位设置
-      description: 投影方式（正投/吊装/背投/吊装背投）、投影偏好（色彩 35 / 明亮 6）、色温（0/1/2）、动态对比度（关/正常/高速）四类多档设置的选择与回读。
+      description: 投影方式（正投/吊装/背投/吊装背投）、投影偏好（色彩 35 / 明亮 6）、动态对比度（关/正常/高速）三类多档设置的选择与回读；色温因写入语义未确认，0.0.3 起不再暴露可写实体，仅保留只读诊断值。
       module_refs: ["entity-platforms", "state-coordinator"]
       depends_on: ["32", "132"]
       node_context:
@@ -882,8 +861,8 @@
       - id: '5201'
         type: function_point
         name: 档位标签映射
-        description: 有标签的档位显示中文语义名，无标签的（色温）直接显示原始值，并统一暴露 `raw_value`。
-        spec: "`select.py:76-102`；色温不给标签的理由见 `const.py:72-74`。"
+        description: 有标签的档位显示中文语义名，并统一暴露 `raw_value`。
+        spec: "`select.py:71-102`；色温写通路不暴露的理由见 `const.py:59-62`。"
         constraint: 未确认语义的档位不得臆造标签。
         input: 固件原始值
         process: 双向映射
@@ -1049,8 +1028,8 @@
       node_context:
       keywords: ["ambient_brightness", "ambient_mode", "linear_scale"]
       code_mapping:
-        - "custom_components/epson_ef/number.py:399-458"
-        - "custom_components/epson_ef/select.py:167-219"
+        - "custom_components/epson_ef/number.py:399-452"
+        - "custom_components/epson_ef/select.py:111-162"
         - "custom_components/epson_ef/const.py:144-163"
       children:
       - id: '6201'
@@ -1084,7 +1063,7 @@
       node_context:
       keywords: ["sensors", "lamp_hours", "distance", "stale"]
       code_mapping:
-        - "custom_components/epson_ef/sensor.py:57-121"
+        - "custom_components/epson_ef/sensor.py:57-120"
       children:
       - id: '7101'
         type: function_point
@@ -1098,7 +1077,7 @@
         type: function_point
         name: 投射距离换算
         description: 固件返回毫米，实体以米呈现并保留 `distance_mm` 原始值。
-        spec: "`sensor.py:88-121`。"
+        spec: "`sensor.py:88-120`。"
         input: 毫米串
         process: /1000 + 保留原值
         output: 距离（米）
@@ -1117,7 +1096,7 @@
         type: function_point
         name: 可用性反转
         description: `available` 恒 True，`is_on` 取协调器 `last_update_success`——这是有意的降级可见性设计。
-        spec: "`binary_sensor.py:49-56`；同类设计见 `button.py:131-134`。"
+        spec: "`binary_sensor.py:49-56`；同类设计见 `button.py:123-126`。"
         constraint: 与多数实体的 `available = last_update_success` 相反，改实体基类时不要「统一」掉。
         input: 协调器状态
         process: 布尔映射
@@ -1240,7 +1219,7 @@
       node_context:
       keywords: ["unit_tests", "ast_contract", "regression_guard"]
       code_mapping:
-        - "tests/test_api.py:100-613"
+        - "tests/test_api.py:100-594"
         - "tests/test_const_contract.py:25-145"
         - "tests/test_regressions.py:38-219"
       children:
@@ -1347,15 +1326,15 @@
       - id: '8402'
         type: function_point
         name: 离线单元测试
-        description: `python -m unittest discover -s tests -v`，64 用例全部不 import HA。
+        description: `python -m unittest discover -s tests -v`，73 用例全部不 import HA。
         spec: "`.github/workflows/tests.yml:24`。"
         input: 源码
         process: unittest discover
-        output: 64 用例结果
+        output: 73 用例结果
       - id: '8411'
         type: function_constraint
         name: 门禁不覆盖 HA 装配层
-        description: CI 不安装 homeassistant（`:18` 只装 aiohttp/ruff/pyflakes），7 个平台 + config_flow + services + 装配根在 CI 中零执行；历史 BLOCKER（5 元组解包崩溃使 48 实体全不可用）正是从此漏过。
+        description: CI 不安装 homeassistant（`:18` 只装 aiohttp/ruff/pyflakes），7 个平台 + config_flow + services + 装配根在 CI 中零执行；历史 BLOCKER（5 元组解包崩溃使 36 实体全不可用）正是从此漏过。
       - id: '8412'
         type: function_constraint
         name: 门禁不覆盖 tools

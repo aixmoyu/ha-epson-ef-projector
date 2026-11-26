@@ -6,7 +6,7 @@ type: module-design
 
 description: "pjctl-transport 是一个刻意做成「可脱离 Home Assistant 单测」的传输层：单类 EpsonApi 承载认证子层（挑战解析 + nonce 缓存 + 摘要头合成）、传输子层（请求封装 + 四类异常映射）、命令子层（34 个语义方法，读→None / 写→上抛的不对称契约），以及对焦闭环算法。核心数据模型只有三个实例字段（session 所有权、认证三元组、nonce 计数）与一个跨调用延续的算法上下文（对焦目标与脉冲预算）。对外接口就是这 36 个公开协程方法，其中 `request()` 同时是内部隧道与对外逃生门。"
 
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 
 ---
 
@@ -20,7 +20,7 @@ base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
   2. 协议契约实现（`size` = 参数串 token 数，不是字节数）——`api.py:160-175`
   3. 失败语义分类（Unavailable / CommandFailed / Timeout / 通用 Error）——`api.py:40-61`
   4. 电源状态判定（双重探针 + 异常归一化）——`api.py:221-276`
-  5. 34 个固件命令的语义封装（14 个 `get_*` 读方法 + 10 个 `set_*` 写方法 + 10 个行为方法；读失败→None、写失败→上抛）——`api.py:295-656`
+  5. 34 个固件命令的语义封装（14 个 `get_*` 读方法 + 10 个 `set_*` 写方法 + 10 个行为方法；读失败→None、写失败→上抛）——`api.py:295-647`
   6. 对焦绝对定位闭环（连续移动 + 定时 + OFF + 回读）——`api.py:544-584`
 
 ## 内部架构与分层设计
@@ -301,7 +301,7 @@ flowchart LR
 
 |名称|描述|调用方|提供方|请求参数|返回参数|
 |-|-|-|-|-|-|
-|`request`|任意命令透传（也是所有高层方法的底座）|`button.py:138`、`select.py:107`、`switch.py:106`、`services.py:64`|`EpsonApi`|`cmd_id, params, timeout`|`dict`|
+|`request`|任意命令透传（也是所有高层方法的底座）|`button.py:128`、`select.py:107`、`switch.py:106`、`services.py:64`|`EpsonApi`|`cmd_id, params, timeout`|`dict`|
 |`probe_state`|电源态判定|`coordinator.py:43`、`media_player.py:154`|`EpsonApi`|`verify: bool=True`|`(str, tuple[int,int]\|None)`|
 |`wait_for_state`|限时确认目标态|`media_player.py:167`|`EpsonApi`|`target: str, timeout_s: float=10.0`|`bool`|
 |`get_raw`|通用读（返回原始串）|`coordinator.py:85/93/98/102`|`EpsonApi`|`cmd_id, params`|`str \| None`|
@@ -360,7 +360,7 @@ flowchart LR
 
 ### 设计哲学
 
-- **"可脱离 HA 单测"优先于"复用 HA 工具"**：文件头明示无 HA import（`api.py:1-3`），代价是丢失 HA 的 `async_timeout`/`aiohttp_client` 会话复用，收益是 64 个测试可在纯 Python 环境跑（`python3 -m unittest discover -s tests` → 64 tests OK）。
+- **"可脱离 HA 单测"优先于"复用 HA 工具"**：文件头明示无 HA import（`api.py:1-3`），代价是丢失 HA 的 `async_timeout`/`aiohttp_client` 会话复用，收益是 73 个测试可在纯 Python 环境跑（`python3 -m unittest discover -s tests` → 73 tests OK）。
 - **"失败分类"优先于"失败重试"**：模块内只有 401 一处重试，其余一律上抛或降级为 None。原因是固件是单线程 NanoHTTPD，盲目重试会放大拥塞。
 - **"闭环在客户端"优先于"假设固件能力"**：对焦定位是唯一主动实现控制算法的地方（`api.py:544-584`），因为固件明确没有绝对定位命令（`const.py:108-118` 记录了两次真机复测的纠正）。
 

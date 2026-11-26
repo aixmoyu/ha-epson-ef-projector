@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: "entry-core 的内部设计：一个无状态装配函数（setup）+ 一个对称的拆卸函数（unload）+ 两组注册表治理函数（身份迁移 / 遗留清理）+ 三条配置流 + 两个服务 + 一个诊断导出。核心模型是 config entry 的生命周期状态机（含 v1→v2 版本迁移），关键不变量是『身份先解析、注册表先修好、平台最后转发』与『服务随条目计数装卸』。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 id: entry-core
 ---
 
@@ -343,7 +343,7 @@ flowchart LR
     CFG -->|"poll_interval（options 优先）"| CO["Ef50Coordinator"]
     API["EpsonApi"] --> HD
     CO --> HD
-    HD -->|"7 平台读取 coordinator/base_id"| ENT["48 个实体"]
+    HD -->|"7 平台读取 coordinator/base_id"| ENT["36 个实体"]
     SVC["send_key / raw_request"] -->|"_resolve_api"| HD
     SVC -->|"result"| EV["epson_ef_response 事件"]
     HD -->|"只读快照"| DIAG["诊断下载"]
@@ -393,7 +393,7 @@ flowchart LR
 |-|-|-|-|-|
 |`ConfigEntryNotReady`|HA setup 重试|设备暂不可用，稍后重试|**仅** `coordinator.async_config_entry_first_refresh()` 抛错（`__init__.py:190-193`）；`get_product_name` 分支不可达（`api.py:295-300`）|无需干预，HA 自动退避重试|
 |`cannot_connect`|配置流表单错误|探测未取到 product name|user/reconfigure 流（`config_flow.py:54`、`:90`）|用户检查 IP/电源/网络|
-|`HomeAssistantError("Unknown key: X")`|服务调用失败|键名不在 `KEYCODES` 且非纯数字|`send_key`（`services.py:53`）|改用 `KEYCODES` 内键名或数字 keycode（`const.py:195-219`）|
+|`HomeAssistantError("Unknown key: X")`|服务调用失败|键名不在 `KEYCODES` 且非纯数字|`send_key`（`services.py:53`）|改用 `KEYCODES` 内键名或数字 keycode（`const.py:178-199`）|
 |`HomeAssistantError("No loaded epson_ef entry found")`|服务调用失败|`hass.data[DOMAIN]` 为空/无带 api 条目|`send_key`/`raw_request`（`services.py:19`、`:35`）|确认集成已加载|
 |`HomeAssistantError("<id> is not a registry entity")`|服务调用失败|entity_id 不在实体注册表|同上（`services.py:26`）|传 `media_player` 实体或省略|
 |`HomeAssistantError("<id> does not belong to a loaded entry")`|服务调用失败|实体所属 entry 未加载|同上（`services.py:30`）|检查条目状态|

@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-003
 description: "对固件不可读的状态，必须在实体上显式声明『这是假设值』（assumed_state + RestoreEntity + raw_value/stale 属性），绝不用本地记忆冒充设备真值；对可读状态，则必须暴露固件原始值供用户核对。"
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: global
 ---
@@ -14,11 +14,11 @@ principle_scope: global
 
 HB71 固件对相当一批能力**没有读通路**（`CONFIG_GET_AMBIENT_LIGHT` 全子索引 FAIL、`GET_AUTO_CONTRAST` FAIL、测试图案无读、静音只有 toggle 键）。本项目的处理不是"隐藏这些实体"，也不是"假装读到了"，而是三条可核查的机制：
 
-1. **`assumed_state = True`**：让 HA 前端把该状态渲染为"假设值"（`switch.py:166-169`、`switch.py:228-230`、`switch.py:288-290`、`number.py:444-447`、`select.py:203-206`）。
-2. **`RestoreEntity` 跨重启恢复**：`async_get_last_state()` 读回上次值，只接受非 `unknown/unavailable` 的状态（`switch.py:158-164`、`number.py:433-442`、`select.py:197-201`）。
-3. **暴露固件原始值**：可读实体统一带 `raw_value` 属性（`switch.py:100-102`、`select.py:99-102`、`number.py:135-140`、`number.py:370-377` 三个增益通道都暴露完整三元组）；不可读但可能陈旧的数据带 `stale` 布尔（`sensor.py:70-83`、`sensor.py:112-121`）。
+1. **`assumed_state = True`**：让 HA 前端把该状态渲染为"假设值"（`switch.py:166-169`、`switch.py:228-230`、`switch.py:288-290`、`number.py:444-447`、`select.py:147-150`）。
+2. **`RestoreEntity` 跨重启恢复**：`async_get_last_state()` 读回上次值，只接受非 `unknown/unavailable` 的状态（`switch.py:158-164`、`number.py:433-442`、`select.py:141-145`）。
+3. **暴露固件原始值**：可读实体统一带 `raw_value` 属性（`switch.py:100-102`、`select.py:99-102`、`number.py:135-140`、`number.py:370-377` 三个增益通道都暴露完整三元组）；不可读但可能陈旧的数据带 `stale` 布尔（`sensor.py:70-83`、`sensor.py:112-120`）。
 
-写失败的语义同样诚实：**写成功才翻本地值**，失败抛 `HomeAssistantError` 且不翻转（`switch.py:171-179`、`number.py:291-292`、`select.py:208-219`）。
+写失败的语义同样诚实：**写成功才翻本地值**，失败抛 `HomeAssistantError` 且不翻转（`switch.py:171-179`、`number.py:291-292`、`select.py:152-162`）。
 
 ## 为什么要这样
 

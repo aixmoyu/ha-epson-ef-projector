@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 模块功能树 — entry-core
 # project: "ha-epson-ef-projector"
-# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+# base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 # 范围: custom_components/epson_ef/{__init__.py,config_flow.py,diagnostics.py,
 #       services.py} = 221 + 132 + 39 + 102 = 494 行
 # 结构: 顶层节点列表 (R1); directory → function → point/spec/constraint
@@ -467,7 +467,7 @@
         code_mapping:
           - "custom_components/epson_ef/services.py:43-54"
           - "custom_components/epson_ef/services.py:72-82"
-          - "custom_components/epson_ef/const.py:195-219"
+          - "custom_components/epson_ef/const.py:178-199"
       children:
       - id: '40201'
         type: function_point

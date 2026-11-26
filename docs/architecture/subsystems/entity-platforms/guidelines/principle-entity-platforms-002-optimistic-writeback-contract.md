@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-002
 description: 实体写成功后，乐观值必须同时回填 coordinator.data 与实体本地属性，并（对有读通路的能力）紧接着 async_request_refresh()。只改 self._attr_* 会在下一帧被陈旧的 coordinator.data 覆盖回去；只回填缓存不刷新则要等下一个慢诊断轮（最坏 180s）才被固件真值确认。
-base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
+base_commit: 23e9f32fda402d6ae6a549425acdcafecbcfa95a
 principle_category: 架构
 principle_scope: module
 ---
@@ -31,7 +31,7 @@ self.async_write_ha_state()              # ③ 立即上屏
 await self.coordinator.async_request_refresh()  # ④ 请求权威回读
 ```
 
-同一模式在 `select.py:110-113`（档位）、`number.py:216-220`（刷新定时器）、`number.py:392-396`（色彩增益）、`number.py:297-301`（对焦）、`select.py:160-164`（启动模式）重复出现。对焦那处还有个额外理由：`settings["focus_position"]` 只在慢诊断轮刷新（`coordinator.py:113-115`），而闭环定位有 ±容差偏差（实测目标 120 落到 122），所以回写的是**实测终值**而非目标值（`number.py:297-299`）。
+同一模式在 `select.py:110-113`（档位）、`number.py:216-220`（刷新定时器）、`number.py:392-396`（色彩增益）、`number.py:297-301`（对焦）、`select.py:110`（启动模式）重复出现。对焦那处还有个额外理由：`settings["focus_position"]` 只在慢诊断轮刷新（`coordinator.py:113-115`），而闭环定位有 ±容差偏差（实测目标 120 落到 122），所以回写的是**实测终值**而非目标值（`number.py:297-299`）。
 
 **当前实现的两处例外，都是有意的但会带来代价的**：
 

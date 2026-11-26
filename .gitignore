@@ -228,3 +228,6 @@ __marimo__/
 # Agent
 AGENTS.md
 .agents/
+
+# 本地排查日志（AGENTS.md §7 早有此约定，此前漏在 .gitignore 之外）
+logs/

@@ -98,39 +98,6 @@
       "auto_focus": {
         "name": "自动对焦"
       },
-      "floating_settings": {
-        "name": "浮窗设置"
-      },
-      "manual_focus": {
-        "name": "手动对焦"
-      },
-      "manual_qc": {
-        "name": "手动梯形校正"
-      },
-      "manual_shift": {
-        "name": "画面位移"
-      },
-      "panel_alignment": {
-        "name": "面板对齐"
-      },
-      "screen_fit": {
-        "name": "屏幕适配"
-      },
-      "btspk_mode": {
-        "name": "蓝牙音箱模式"
-      },
-      "error_warning": {
-        "name": "错误警告查看"
-      },
-      "wall_color_fit": {
-        "name": "一键墙面颜色自适应"
-      },
-      "auto_correction_run": {
-        "name": "自动校正触发"
-      },
-      "obstacle_avoidance_run": {
-        "name": "避障校正触发"
-      },
       "zoom_in": {
         "name": "画面放大"
       },
@@ -148,9 +115,6 @@
       },
       "shift_right": {
         "name": "画面右移"
-      },
-      "geometry_reset": {
-        "name": "重置画面校正"
       }
     },
     "switch": {

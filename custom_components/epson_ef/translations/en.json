@@ -98,39 +98,6 @@
       "auto_focus": {
         "name": "Auto focus"
       },
-      "floating_settings": {
-        "name": "Floating settings"
-      },
-      "manual_focus": {
-        "name": "Manual focus"
-      },
-      "manual_qc": {
-        "name": "Manual keystone"
-      },
-      "manual_shift": {
-        "name": "Picture shift"
-      },
-      "panel_alignment": {
-        "name": "Panel alignment"
-      },
-      "screen_fit": {
-        "name": "Screen fit"
-      },
-      "btspk_mode": {
-        "name": "Bluetooth speaker mode"
-      },
-      "error_warning": {
-        "name": "Error & warning view"
-      },
-      "wall_color_fit": {
-        "name": "Wall color auto fit (trigger)"
-      },
-      "auto_correction_run": {
-        "name": "Auto correction (trigger)"
-      },
-      "obstacle_avoidance_run": {
-        "name": "Obstacle avoidance (trigger)"
-      },
       "zoom_in": {
         "name": "Zoom in"
       },
@@ -148,9 +115,6 @@
       },
       "shift_right": {
         "name": "Shift image right"
-      },
-      "geometry_reset": {
-        "name": "Reset geometry corrections"
       }
     },
     "switch": {

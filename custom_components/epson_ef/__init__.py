@@ -150,6 +150,13 @@ def _async_remove_legacy_entities(
       start" labels; the 0/1 → label mapping is unverified, so the entity was
       dropped. The raw value stays available as the media_player attribute
       ``standby_mode``.
+    - the remaining firmware-panel and one-shot calibration buttons
+      (``manual_focus``, ``manual_qc``, ``manual_shift``, ``panel_alignment``,
+      ``screen_fit``, ``btspk_mode``, ``floating_settings``, ``error_warning``,
+      ``wall_color_fit``, ``auto_correction_run``, ``obstacle_avoidance_run``,
+      ``geometry_reset``) were removed as well: their own comments only
+      described what they were supposed to do, never what a device actually
+      did, and several of them rewrite calibration or geometry state.
     """
     registry = er.async_get(hass)
     # unique_id 后缀 → 该后缀所属的平台。suffix 拼在 base_id 后面组成完整
@@ -171,6 +178,18 @@ def _async_remove_legacy_entities(
             "button-framefit",
             "button-generate_camera_pattern",
             "button-smart_eye_protect_run",
+            "button-manual_focus",
+            "button-manual_qc",
+            "button-manual_shift",
+            "button-panel_alignment",
+            "button-screen_fit",
+            "button-btspk_mode",
+            "button-floating_settings",
+            "button-error_warning",
+            "button-wall_color_fit",
+            "button-auto_correction_run",
+            "button-obstacle_avoidance_run",
+            "button-geometry_reset",
         ),
     }
     wanted: set[tuple[str, str]] = set()

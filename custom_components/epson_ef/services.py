@@ -6,10 +6,18 @@ import logging
 import voluptuous as vol
 from homeassistant.core import HomeAssistant, ServiceCall, callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.service import async_register_admin_service
 
 from .const import DOMAIN, KEYCODES
 
 _LOGGER = logging.getLogger(__name__)
+
+# 这两个服务能把任意固件命令写进投影仪,包括会重写标定状态、几何校正与
+# 整机模式的命令。破坏性远超"控制一台投影仪"的常规权限,因此用
+# async_register_admin_service 注册:普通用户即使被授予了实体控制权,
+# 也拿不到一条绕过所有实体校验的原始命令通道。(自动化/脚本调用不带
+# user_id,按 HA 的既有语义放行。)
+_ADMIN_ONLY_SERVICES = ("send_key", "raw_request")
 
 
 def _resolve_api(hass: HomeAssistant, entity_id: str | None):
@@ -69,7 +77,8 @@ def async_register_services(hass: HomeAssistant) -> None:
             {"entity_id": entity_id, "id": command_id, "response": result},
         )
 
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         "send_key",
         send_key,
@@ -80,7 +89,8 @@ def async_register_services(hass: HomeAssistant) -> None:
             }
         ),
     )
-    hass.services.async_register(
+    async_register_admin_service(
+        hass,
         DOMAIN,
         "raw_request",
         raw_request,
@@ -97,6 +107,6 @@ def async_register_services(hass: HomeAssistant) -> None:
 @callback
 def async_unregister_services(hass: HomeAssistant) -> None:
     """Remove integration services when the last entry is unloaded."""
-    for service in ("send_key", "raw_request"):
+    for service in _ADMIN_ONLY_SERVICES:
         if hass.services.has_service(DOMAIN, service):
             hass.services.async_remove(DOMAIN, service)

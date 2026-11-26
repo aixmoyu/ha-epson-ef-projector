@@ -604,8 +604,10 @@ class EpsonApi:
         """Reset all geometry corrections: params "5" (size=1).
 
         Same command as the menu item「重置校正」. Clears zoom/shift/
-        quick-corner/keystone state; the projector's auto-correction
-        (NOTIFY_AUTO_CORRECTION button) can rebuild the keystone afterwards.
+        quick-corner/keystone state. There is no entity in front of it (the
+        button was removed in 0.0.4: one-way, no rollback), and the firmware's
+        auto-correction is not exposed either, so callers must rebuild the
+        keystone from the projector menu. Kept for tools/ and diagnostics.
         """
         await self.request("CONFIG_SET_QC", params="5")
 

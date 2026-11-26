@@ -189,6 +189,7 @@ class RemovedUnverifiedEntityTests(unittest.TestCase):
     """
 
     REMOVED_BUTTONS = (
+        # 0.0.3: 评审逐条点名的未验证命令
         "input_source",
         "patternless_auto_focus",
         "manual_zoom",
@@ -197,7 +198,28 @@ class RemovedUnverifiedEntityTests(unittest.TestCase):
         "framefit",
         "generate_camera_pattern",
         "smart_eye_protect_run",
+        # 0.0.4: 同一条规则下补全 —— 注释只写了"作用"、从未写实测结论,
+        # 且其中几条会重写几何校正/标定/整机模式
+        "manual_focus",
+        "manual_qc",
+        "manual_shift",
+        "panel_alignment",
+        "screen_fit",
+        "btspk_mode",
+        "floating_settings",
+        "error_warning",
+        "wall_color_fit",
+        "auto_correction_run",
+        "obstacle_avoidance_run",
+        "geometry_reset",
     )
+
+    # 当前唯一允许暴露的按钮集合(遥控器等价键 + 真机回环验证过的步进)
+    EXPOSED_BUTTONS = {
+        "home", "back", "menu", "auto_focus",
+        "zoom_in", "zoom_out",
+        "shift_up", "shift_down", "shift_left", "shift_right",
+    }
 
     def _button_suffixes(self) -> set[str]:
         """用 AST 取表的第一列,不 import button.py(它依赖 homeassistant)。"""
@@ -223,8 +245,11 @@ class RemovedUnverifiedEntityTests(unittest.TestCase):
         # 防止"删干净"式回退:真机验证过的按钮必须保留
         suffixes = self._button_suffixes()
         for suffix in ("home", "back", "menu", "auto_focus", "zoom_in",
-                       "shift_left", "geometry_reset"):
+                       "zoom_out", "shift_up", "shift_down", "shift_left",
+                       "shift_right"):
             self.assertIn(suffix, suffixes)
+        # 反向:表里不允许出现上表之外的按钮,以免悄悄加回未验证项
+        self.assertEqual(suffixes, self.EXPOSED_BUTTONS)
 
     def test_color_temp_write_path_is_not_exposed(self):
         from epson_ef.const import WRITABLE_SELECTS
@@ -321,6 +346,54 @@ class LegacyCleanupCoverageTests(unittest.TestCase):
         legacy = self._legacy_map()
         self.assertIn("setting-color_temp", legacy.get("select", ()))
         self.assertIn("standby_mode", legacy.get("select", ()))
+
+
+class PrivilegedServiceTests(unittest.TestCase):
+    """send_key / raw_request 能发任意固件命令,必须限定管理员。
+
+    两者都用 Home Assistant 自带的 async_register_admin_service 注册,
+    而不是普通 async_register —— 这样权限检查由核心完成,不会因为漏写
+    分支而退化。测试环境不装 homeassistant,只能校验源码。
+    """
+
+    def _source(self) -> str:
+        return (_PKG_DIR / "services.py").read_text(encoding="utf-8")
+
+    def _registered_names(self) -> dict[str, str]:
+        """service 名 -> 注册时调用的函数名。"""
+        tree = ast.parse(self._source())
+        mapping: dict[str, str] = {}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = ast.unparse(node.func)
+            if func not in ("async_register_admin_service",
+                            "hass.services.async_register"):
+                continue
+            # 前两个位置参数是 hass/domain 或 domain;service 名是字符串常量
+            names = [
+                a.value for a in node.args
+                if isinstance(a, ast.Constant) and isinstance(a.value, str)
+            ]
+            for name in ("send_key", "raw_request"):
+                if name in names:
+                    mapping[name] = func
+        return mapping
+
+    def test_both_services_use_admin_registration(self) -> None:
+        mapping = self._registered_names()
+        self.assertEqual(set(mapping), {"send_key", "raw_request"})
+        for name, func in mapping.items():
+            self.assertEqual(
+                func, "async_register_admin_service",
+                f"{name} 必须用管理员注册,否则任何用户都能发原始命令",
+            )
+
+    def test_plain_registration_is_not_used(self) -> None:
+        self.assertNotIn(
+            "hass.services.async_register", self._source(),
+            "不要退回普通注册:那会丢掉管理员校验",
+        )
 
 
 class UnreachableProjectorTests(unittest.IsolatedAsyncioTestCase):

@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: "verification-harness 是本仓库的证据与门禁设施：tests/ 用伪包注入 + AST 静态解析在无 Home Assistant 的环境里锁定传输层协议与配置表结构契约，tools/ 用 importlib 直载生产 api.py 回落真实固件能力，.github/workflows/tests.yml 是唯一自动化门禁。它验证其余 4 个生产模块，自身不参与运行时加载，也不被生产代码反向依赖。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 模块边界
@@ -52,7 +52,7 @@ graph LR
 
 | 依赖方 (Caller) | 交互方式 | 契约/接口路径 |
 |-|-|-|
-| 开发者 / 维护者 | 手工命令行 | `python3 -m pytest tests/ -q`（实测 64 passed）；`python3 -m unittest discover -s tests -v`（实测 Ran 64 OK）；`python3 tools/<script>.py <投影仪IP>`（`tools/README.md:8-15`） |
+| 开发者 / 维护者 | 手工命令行 | `python3 -m pytest tests/ -q`（实测 71 passed）；`python3 -m unittest discover -s tests -v`（实测 Ran 64 OK）；`python3 tools/<script>.py <投影仪IP>`（`tools/README.md:8-15`） |
 | GitHub Actions | 事件触发（push / pull_request） | `.github/workflows/tests.yml:3-5`；无 tag/release 触发，仓库仅此 1 个 workflow |
 | （无其他代码调用方） | — | 生产包不 import 测试或工具：`custom_components/epson_ef/*.py` 中无 `tests`/`tools` 的 import（`grep` 实测 0 命中） |
 
@@ -86,7 +86,7 @@ graph LR
 
 | 日期 | 变更内容 | 根因 / 触发 | 关联工件 |
 |-|-|-|-|
-| 2026-11-01 | 新增 `tests/test_const_contract.py`（3 用例）把"表宽度==解包宽度"从人工检查升级为 AST 契约 | BLOCKER-1：`WRITABLE_SELECTS` 5→6 元组而 `coordinator.py:97` 漏改，58 实体全部 unavailable | `tests/test_const_contract.py:1-15` |
+| 2026-11-01 | 新增 `tests/test_const_contract.py`（3 用例）把"表宽度==解包宽度"从人工检查升级为 AST 契约 | BLOCKER-1：`WRITABLE_SELECTS` 5→6 元组而 `coordinator.py:97` 漏改，48 实体全部 unavailable | `tests/test_const_contract.py:1-15` |
 | 2026-11-01 | 新增 `tests/test_regressions.py` 的 `EntityRegistryApiTests`，用 AST 校验 `async_get_entity_id` 实参顺序 | MAJOR-2：`(platform, DOMAIN, uid)` 与真实签名 `(domain, platform, unique_id)` 写反，字符串参数不报错、静默失效 | `tests/test_regressions.py:141-170` |
 | 2026-11-01 | 新增 `FocusPositioningTests`，固化"必须 MAX/MIN 连续移动 + OFF 收尾 + 取消时仍发 OFF" | MAJOR-3：按"每步 10"换算的旧算法到不了远距离目标（150 从 89 只到 128） | `tests/test_regressions.py:38-94`、`const.py:105-127` |
 | 2026-11-07 | 新增 `FocusAbsoluteTests` + `UnreachableProjectorTests`（5 用例），并把 `unittest.main()` 留在文件中部的历史缺陷暴露出来 | 真机复测对焦语义；不可达语义修正 | `tests/test_api.py:511-567`、`tests/test_regressions.py:186-219` |

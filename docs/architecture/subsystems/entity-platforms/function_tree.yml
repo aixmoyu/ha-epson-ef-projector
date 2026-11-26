@@ -1,6 +1,6 @@
 # entity-platforms 模块功能树
 # project: ha-epson-ef-projector
-# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 # scope: custom_components/epson_ef/{media_player,sensor,select,binary_sensor,button,switch,number}.py
 # 说明: 叶子为 function(业务能力), 二级 directory 按平台类别组织; 类名/方法名不入树。
 
@@ -49,27 +49,6 @@
       type: function_constraint
       name: 盲切换电源键约束
       description: 固件只暴露 KEYCODE_POWER（键值 26）的 toggle 语义，不存在独立的开/关命令；任何绕过"先探测"的调用点都可能造成设备与 HA 状态分叉。
-
-  - id: '102'
-    type: function
-    name: 设定启动模式
-    description: 在"节能"与"快速启动"之间切换投影仪待机行为（CONFIG_SET_PJ_STANDBY_MODE），写入后乐观更新并请求刷新确认。
-    depends_on: []
-    node_context:
-      keywords: ["standby_mode", "fast_boot", "pj_standby_mode"]
-      code_mapping:
-        - "custom_components/epson_ef/select.py:116-164"
-        - "custom_components/epson_ef/const.py:27-45"
-        - "custom_components/epson_ef/api.py:317-325"
-    children:
-    - id: '10201'
-      type: function_point
-      name: 中文选项与固件原始值互转
-      description: "节能/快速启动" 与固件 0/1 之间通过 const 的映射函数双向转换，未知值一律返回 None。
-      spec: 未知原始值不上屏（current_option 返回 None），实体属性 raw_value 保留原值供核对
-      input: 固件返回的 standby_mode 字符串或用户选择的选项
-      process: standby_option_to_raw / standby_raw_to_option
-      output: 可显示的选项名或可下发的原始值
 
   - id: '103'
     type: function
@@ -143,7 +122,7 @@
 - id: '2'
   type: directory
   name: 遥控与系统导航
-  description: 以按钮为载体的遥控键注入与固件功能唤起；30 个按钮全部由 BUTTON_DEFS 表驱动，分为按键注入、功能触发、几何步进三类。
+  description: 以按钮为载体的遥控键注入与固件功能唤起；22 个按钮全部由 BUTTON_DEFS 表驱动，分为按键注入、功能触发、几何步进三类。
   children:
   - id: '201'
     type: function
@@ -282,8 +261,8 @@
     node_context:
       keywords: ["projection", "mount_mode", "label_mapping"]
       code_mapping:
-        - "custom_components/epson_ef/const.py:82-85"
-        - "custom_components/epson_ef/select.py:48-113"
+        - "custom_components/epson_ef/const.py:63-67"
+        - "custom_components/epson_ef/select.py:43-107"
     children:
     - id: '30201'
       type: function_point
@@ -301,23 +280,7 @@
     node_context:
       keywords: ["picture_preference", "color_mode", "bright_mode"]
       code_mapping:
-        - "custom_components/epson_ef/const.py:86-91"
-
-  - id: '304'
-    type: function
-    name: 调整色温
-    description: 在固件色温档位 0/1/2 之间切换，因原始值语义未确认故不给中文标签。
-    depends_on: []
-    node_context:
-      keywords: ["color_temp", "unnamed_option", "raw_value"]
-      code_mapping:
-        - "custom_components/epson_ef/const.py:73-78"
-        - "custom_components/epson_ef/select.py:76-80"
-    children:
-    - id: '30401'
-      type: function_constraint
-      name: 未确认语义不臆造标签
-      description: 机身菜单的"标准/暖色/冷色"走 Android 全局设置，与 pjctl COLOR_TEMP 数值不同源，因此选项只暴露 0/1/2 原始值。
+        - "custom_components/epson_ef/const.py:69-72"
 
   - id: '305'
     type: function
@@ -327,7 +290,7 @@
     node_context:
       keywords: ["dynamic_contrast", "engine_contrast"]
       code_mapping:
-        - "custom_components/epson_ef/const.py:79-81"
+        - "custom_components/epson_ef/const.py:63-66"
 
   - id: '306'
     type: function
@@ -525,8 +488,8 @@
     node_context:
       keywords: ["ambient_mode", "effect_slot", "optimistic"]
       code_mapping:
-        - "custom_components/epson_ef/select.py:167-219"
-        - "custom_components/epson_ef/const.py:157-163"
+        - "custom_components/epson_ef/select.py:111-162"
+        - "custom_components/epson_ef/const.py:153-158"
     children:
     - id: '50301'
       type: function_constraint

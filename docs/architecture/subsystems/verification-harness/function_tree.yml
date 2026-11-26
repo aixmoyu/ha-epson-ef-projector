@@ -1,5 +1,5 @@
 # 模块: verification-harness —— 验证与现场分析设施（tests/ + tools/ + CI 门禁）
-# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 # project: "ha-epson-ef-projector"
 #
 # 本模块不是运行时域：它不参与 HA 集成加载，只在"开发者在场"时运行。
@@ -15,7 +15,7 @@
   - id: '10'
     type: directory
     name: 离线验证域
-    description: 秒级可重复、不接触真实设备的验证能力。全部落在 tests/ 4 个文件、1020 行、64 个用例上（`wc -l tests/*.py` 实测），通过伪包注入 + AST 静态解析绕开 HA。
+    description: 秒级可重复、不接触真实设备的验证能力。全部落在 tests/ 4 个文件、1020 行、71 个用例上（`wc -l tests/*.py` 实测），通过伪包注入 + AST 静态解析绕开 HA。
     children:
     - id: '101'
       type: function
@@ -251,7 +251,7 @@
       - id: '10612'
         type: function_spec
         name: 拦住的事故
-        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，58 个实体全部 unavailable（`tests/test_const_contract.py:1-9`）。
+        description: 3.10.0 发布前 `WRITABLE_SELECTS` 从 5 元组扩到 6 元组（新增 options），`select.py` 同步改了但 `coordinator.py` 漏改；待机时该分支不执行，静态检查与既有单测都没覆盖解包点，真机开机后每次诊断轮询抛 ValueError，48 个实体全部 unavailable（`tests/test_const_contract.py:1-9`）。
     - id: '107'
       type: function
       name: 拦截未定义名字

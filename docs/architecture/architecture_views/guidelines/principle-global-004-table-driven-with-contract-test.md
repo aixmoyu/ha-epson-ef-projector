@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-004
 description: "实体装配必须由 const.py 的声明式元组表驱动（而不是每个实体手写一遍命令名），且每张表必须配一条 AST 契约测试，锁死『表的元组宽度 == 所有消费者的解包宽度』。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 工程
 principle_scope: global
 ---
@@ -12,7 +12,7 @@ principle_scope: global
 
 ## 原则详细描述
 
-本项目有 58 个实体，其中 30 个按钮、11 个开关、6 个选择器、7 个 number 全部由**元组表**生成，而不是逐个手写类：
+本项目有 48 个实体，其中 22 个按钮、11 个开关、4 个选择器、7 个 number 全部由**元组表**生成，而不是逐个手写类：
 
 | 表 | 位置 | 形状 | 消费者 |
 |-|-|-|-|

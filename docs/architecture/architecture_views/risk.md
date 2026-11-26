@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "全局风险登记：四类来源（稳定性/并发、性能、安全、运维与工程）合并自四张视图的探索结论。本项目最高危的两个事实是『写操作几乎无并发保护』与『单轮轮询可远超轮询间隔』——两者叠加在单线程 NanoHTTPD 固件上；其次是 raw_request 服务无白名单无 admin 校验的任意命令面，以及 CI 不安装 homeassistant 导致的装配层零覆盖。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 架构风险分析
@@ -28,7 +28,7 @@ base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 | 瓶颈 ID| 位置 | 当前指标 | 阈值 | 触发条件 | 影响 | 突破方案 | 预计工作量 |
 |-|-|-|-|-|-|-|-|
-| R-09 | 慢诊断段串行 33–35 次 HTTP（`coordinator.py:59-132`） | 单条默认 10s 超时（`api.py:160`）；diag 17 条 + switch 6 + select 4 + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode | `update_interval` 默认 15s（`const.py:11`） | 投影仪唤醒时每 12 轮一次；固件变慢或半挂起 | 最坏 ≈330s 远超 15s → 轮询积压、`async_request_refresh` 排队、状态长时间陈旧 | 给整轮 `_async_update_data` 加 `asyncio.timeout` 总预算；失败即跳过本轮并退避 | 小 |
+| R-09 | 慢诊断段串行 33–35 次 HTTP（`coordinator.py:59-132`） | 单条默认 10s 超时（`api.py:160`）；diag 17 条 + switch 6 + select 3 + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode | `update_interval` 默认 15s（`const.py:11`） | 投影仪唤醒时每 12 轮一次；固件变慢或半挂起 | 最坏 ≈320s 远超 15s → 轮询积压、`async_request_refresh` 排队、状态长时间陈旧 | 给整轮 `_async_update_data` 加 `asyncio.timeout` 总预算；失败即跳过本轮并退避 | 小 |
 | R-10 | 命令间节流不均 | diag 与 switch/select 回读后 `sleep(0.2)`（`coordinator.py:88`, `:96`, `:101`），后 5 条（light_output/refresh_timer/focus_range/focus_pos/standby_mode）无间隔（`coordinator.py:102-115`, `:130`） | 单线程固件（NanoHTTPD） | 每诊断轮 | 突发 5 连发对固件压力集中 | 统一节流策略（统一 0.2s 或按命令族分类） | 小 |
 | R-10b | 慢轮存在 7 条重复请求（占慢轮 35 条的 20%） | `diag` 探针表与 `settings` 回读表对同一条命令各发一次：`CONFIG_GET_VMUTE`/`COLOR_TEMP`/`DYNAMIC_CONTRAST`/`MOVEMENT_SENSOR`/`SMART_EYE_PROTECTION`/`STARTUP_CORRECTION` 共 6 条重复（`coordinator.py:63-83` vs `:92-101`，均在 `const.py:53-66`/`:75-92` 表中），另有 `CONFIG_GET_PRODUCT_NAME` 在 probe 与 `coordinator.py:121` 各读一次 | 单线程固件 | 每诊断轮 | 无谓请求使慢轮从 28 条膨胀到 35 条，直接放大 R-09 的积压风险 | 把 `diag` 与 `settings` 合并成一次读取，同一命令只请求一次 | 小 |
 | R-11 | 没有自适应退避 | 设备持续超时 | — | 断电/DHCP 失效/固件挂起 | 每 `poll_interval` 都重打 2 次 liveness，无退避 | 连续 N 次失败后指数退避至上限 | 小 |
@@ -87,7 +87,7 @@ base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 | 区域 | 债务类型 | 原因 | 严重度 | 偿还建议 |
 |-|-|-|-|-|
 | 传输层职责 | 设计债 | `api.py` 有 12 个公开方法在包内零调用者（`get_distance_mm:353`、`get_light_output:366`、`get_picture_preference:380`、`get_color_gain:432`、`focus_step:516`、`geometry_zoom:590`、`geometry_shift:600`、`geometry_reset:610`、`get_auto_focus_state:634`、`get_auto_focus_target:643`、`get_light_time:330`、`set_picture_preference:384` 等），协调器改用 `get_raw` + 手工解析（`coordinator.py:63-83`） | 中等 | 二选一：让协调器改用语义方法，或删掉无用方法；避免双份解析 |
-| 实体平台越界 | 设计债 | 平台直接 `api.request(cmd, params=...)` 拼命令（`switch.py:106`、`select.py:107`、`button.py:138`），绕过 `api.py` 的 `set_*` 语义封装；实测 40 个可写实体中仅 15 个走语义方法，30 个按钮 + 6 个配置开关 + 4 个选择器全部裸拼命令串（`button.py:138`、`switch.py:106`、`select.py:107`） | 中等 | 平台只调语义方法；命令字符串集中到 `const.py`/`api.py` |
+| 实体平台越界 | 设计债 | 平台直接 `api.request(cmd, params=...)` 拼命令（`switch.py:106`、`select.py:107`、`button.py:138`），绕过 `api.py` 的 `set_*` 语义封装；实测 40 个可写实体中仅 15 个走语义方法，22 个按钮 + 6 个配置开关 + 4 个选择器全部裸拼命令串（`button.py:138`、`switch.py:106`、`select.py:107`） | 中等 | 平台只调语义方法；命令字符串集中到 `const.py`/`api.py` |
 | `hass.data` 隐式契约 | 设计债 | 字典无类型，9 处解包（写入 `__init__.py:195-201`；读取 `binary_sensor.py:23`、`services.py:27`、`diagnostics.py:16` 等） | 中等 | 引入 `TypedDict`/dataclass 描述 entry data |
 | 命名 | 代码债 | 20 个类名 `Ef50*` 与 domain `epson_ef`、覆盖 HB71/HB7x 全系脱节（`coordinator.py:19`、`media_player.py:41` 等） | 轻微 | 新代码用 `Epson*`，老类逐步重命名（需同步测试字符串） |
 | 死代码 | 代码债 | `_TIMEOUT` 定义后从未引用（`api.py:37`，真实超时在 `:160`/`:188` 内联）；`coordinator.py:120` 的 `if state == "on":` 嵌在 `:61` 同条件内属冗余 | 轻微 | 删除或统一超时配置项 |

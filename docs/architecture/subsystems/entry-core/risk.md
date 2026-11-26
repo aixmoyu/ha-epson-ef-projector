@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: risk
 description: "entry-core 模块内风险：装配失败路径的资源不归还与半装配残留、身份迁移只认当前地址导致的历史身份盲区与孤儿漏清、迁移对未知版本静默放行、服务装卸的 TOCTOU、Store 身份文件无生命周期、以及 setup 首轮必然触发全量慢诊断。全局级风险（身份双源 R-16、服务无 admin R-23、轮询积压 R-09、HA 零覆盖）见 architecture_views/risk.md，本文件不重复。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 id: entry-core
 ---
 
@@ -55,7 +55,7 @@ id: entry-core
   user flow 探测 product → 创建 entry(v2, unique_id=host:port) → setup
   → Store 空 → CONFIG_GET_PJ_SNO 返回序列号 → 落库 {serial}
   → base_id=serial → 迁移(旧=host:port 无实体, 空转) → 清理(表内 5 条, 无命中)
-  → 首刷成功 → 发布 hass.data → 7 平台用 serial 前缀建 58 实体
+  → 首刷成功 → 发布 hass.data → 7 平台用 serial 前缀建 48 实体
 
 异常路径 1（待机中首次添加）：
   user flow 探测成功（product name 在待机也可读）→ 创建 entry

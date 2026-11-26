@@ -1,19 +1,19 @@
 ---
 project: "ha-epson-ef-projector"
 type: logical-view
-description: "Home Assistant 自定义集成的逻辑分层：入口装配层(__init__/config_flow/diagnostics)把固件 pjctl HTTP 客户端(传输层 api.py)注入单一 DataUpdateCoordinator(状态编排层)，再由 7 个实体平台把共享的 coordinator.data 字典投影成 58 个实体；const.py 作为纯声明契约层被所有层依赖，services.py 提供绕过实体的动作入口。本项目不存在 DDD 四层与限界上下文，实际边界是 HA 集成的六层与按固件能力划分的 7 个功能域。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+description: "Home Assistant 自定义集成的逻辑分层：入口装配层(__init__/config_flow/diagnostics)把固件 pjctl HTTP 客户端(传输层 api.py)注入单一 DataUpdateCoordinator(状态编排层)，再由 7 个实体平台把共享的 coordinator.data 字典投影成 48 个实体；const.py 作为纯声明契约层被所有层依赖，services.py 提供绕过实体的动作入口。本项目不存在 DDD 四层与限界上下文，实际边界是 HA 集成的六层与按固件能力划分的 7 个功能域。"
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 逻辑视图
 
 ## 代码结构与模块划分
 
-本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 3055 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（`diagnose_state.py`、`verify_full.py`、`enum_map.json`）与 `tests/`（4 文件 / 1018 行）属于验证设施，不是运行时域。
+本仓库是单个 HACS 自定义集成，生产代码只有一个 Python 包 `custom_components/epson_ef/`（14 模块 / 2996 行，`wc -l custom_components/epson_ef/*.py` 实测）。`tools/`（`diagnose_state.py`、`verify_full.py`、`enum_map.json`）与 `tests/`（4 文件 / 1145 行）属于验证设施，不是运行时域。
 
 ```text
 project-root/
-├── custom_components/epson_ef/          # 唯一生产包（3055 行 / 14 模块）
+├── custom_components/epson_ef/          # 唯一生产包（2996 行 / 14 模块）
 │   ├── __init__.py                      # 入口装配层：setup/unload、身份解析与迁移、平台转发
 │   ├── config_flow.py                    # 入口装配层：配置/重配置/选项流（VERSION=2）
 │   ├── diagnostics.py                    # 入口装配层（可观测）：诊断包导出
@@ -197,7 +197,7 @@ sequenceDiagram
 | `light_hours` / `light_extra` / `light_measured_at` | int/ISO 串 | `coordinator.py:53-56` | `sensor.py:68`, `media_player.py:114` | 灯时，关机时结转并标记 `stale`（`sensor.py:76`） |
 | `settings` | `dict[str, str]` | `coordinator.py:119`（+实体乐观写） | switch/select/number | 可写设置的固件原始串 |
 | `diag` | `dict[str, str]` | `coordinator.py:127` | sensor/media_player/number | 只读诊断原始串 |
-| `product` / `standby_mode` | `str` | `coordinator.py:123`, `:132` | `media_player.py:87`, `select.py:144` | 设备型号与启动模式 |
+| `product` / `standby_mode` | `str` | `coordinator.py:123`, `:132` | `media_player.py:87`（仅属性，无可写实体） | 设备型号与启动模式 |
 
 ## 领域映射（真实模块边界）
 
@@ -230,22 +230,22 @@ PLATFORMS = [
 |-|-|-|-|-|
 | `media_player` | `media_player.py` | `Ef50MediaPlayer`（+`RestoreEntity`） | 1 | 直接实例化（`media_player.py:36`） |
 | `sensor` | `sensor.py` | `Ef50LightHoursSensor`, `Ef50DistanceSensor`（共用 `_Ef50Sensor` 基类） | 2 | 列表（`sensor.py:28-33`） |
-| `select` | `select.py` | `Ef50StandbyModeSelect`, `Ef50ConfigSelect` ×4, `Ef50AmbientModeSelect` | 6 | 3 次 `async_add_entities`（`select.py:33`, `:36`, `:43`） |
+| `select` | `select.py` | `Ef50ConfigSelect` ×3, `Ef50AmbientModeSelect` | 4 | 2 次 `async_add_entities`（`select.py:30`, `:38`） |
 | `binary_sensor` | `binary_sensor.py` | `Ef50ConnectivitySensor` | 1 | 列表（`binary_sensor.py:24`） |
-| `button` | `button.py` | `Ef50Button` ×30（`BUTTON_DEFS`） | 30 | 表驱动推导（`button.py:92-98`） |
+| `button` | `button.py` | `Ef50Button` ×22（`BUTTON_DEFS`） | 22 | 表驱动推导（`button.py:78-89`） |
 | `switch` | `switch.py` | `Ef50ConfigSwitch` ×6, `Ef50AmbientLightSwitch` ×3, `Ef50TestPatternSwitch`, `Ef50AutoContrastSwitch` | 11 | 4 次 `async_add_entities`（`switch.py:34`, `:41`, `:48`, `:51`） |
 | `number` | `number.py` | `Ef50LightOutputNumber`, `Ef50RefreshTimerNumber`, `Ef50FocusNumber`, `Ef50AmbientBrightnessNumber`, `Ef50ColorGainNumber` ×3 | 7 | 列表 + `extend`（`number.py:53-63`） |
-| **合计** | 7 文件 / 1529 行 | 17 个具体实体类 | **58** | — |
+| **合计** | 7 文件 / 1456 行 | 16 个具体实体类 | **48** | — |
 
-数量交叉校验：`strings.json` 的 `entity` 段键数 = button 30 / switch 11 / select 6 / number 7 / sensor 2 / binary_sensor 1（media_player 无 translation_key，用配置条目名），与代码实体数逐一吻合；`tests/test_const_contract.py` 亦锁定 4 张表的宽度与解包点（`tests/test_const_contract.py:118-145`）。
+数量交叉校验：`strings.json` 的 `entity` 段键数 = button 22 / switch 11 / select 4 / number 7 / sensor 2 / binary_sensor 1（media_player 无 translation_key，用配置条目名），与代码实体数逐一吻合；`tests/test_const_contract.py` 亦锁定 4 张表的宽度与解包点（`tests/test_const_contract.py:118-145`）。
 
 ### 实体命名规律
 
 - **身份基座**：`base_id` 由 `__init__.py` 解析——优先固件序列号，无序列号则把首个 `host:port` 持久化钉住（`__init__.py:42-76`），并存入 `hass.data[DOMAIN][entry_id]["base_id"]`（`__init__.py:199`）。设备侧统一用 `identifiers={(DOMAIN, base_id)}` 聚成一个设备（`media_player.py:89`）。
 - **unique_id 四套后缀约定并存**：
-  - 平台前缀式：`{base_id}-button-{suffix}`（`button.py:122`）、`{base_id}-number-{key}`（`number.py:338`）、`{base_id}-number-light_output`（`number.py:90`）、`{base_id}-select-ambient_mode`（`select.py:189`）；
-  - 设置式：`{base_id}-setting-{suffix}` 同时被 switch 与 select 使用（`switch.py:78`, `select.py:75`）；
-  - 裸后缀式：`{base_id}-connectivity`（`binary_sensor.py:41`）、`{base_id}-standby_mode`（`select.py:130`）、`{base_id}-{suffix}`（`sensor.py:44`）；
+  - 平台前缀式：`{base_id}-button-{suffix}`（`button.py:114`）、`{base_id}-number-{key}`（`number.py:333`）、`{base_id}-number-light_output`（`number.py:89`）、`{base_id}-select-ambient_mode`（`select.py:132`）；
+  - 设置式：`{base_id}-setting-{suffix}` 同时被 switch 与 select 使用（`switch.py:78`, `select.py:70`）；
+  - 裸后缀式：`{base_id}-connectivity`（`binary_sensor.py:41`）、`{base_id}-{suffix}`（`sensor.py:44`）；
   - 媒体播放器直接用 `base_id`（`media_player.py:68`）。
 - **展示名**：除 media_player 用 `entry.data["name"]` 作 `_attr_name`（`media_player.py:69`）外，其余均 `_attr_has_entity_name = True` + `_attr_translation_key`，由 `translations/*.json` 提供本地化名称。
 - **历史命名残留**：类名一律 `Ef50*`（共 20 个类：`coordinator.py:19`、`media_player.py:41`、`config_flow.py:23`, `:108` 等），而 integration/domain 是 `epson_ef`、覆盖 HB7x 全系；`Ef50` 是早期型号名，已与语义脱节。
@@ -255,7 +255,7 @@ PLATFORMS = [
 1. **错误分类是跨层契约**：4 个异常类把"网络不可达 / 命令 FAIL / 超时 / 通用"分开（`api.py:40-61`），协调器据此区分"断电"与"待机"（`coordinator.py:44-49`），`probe_state` 还把 liveness 超时归一化为 `EpsonApiUnavailable`（`api.py:236-246`），避免"关机被当成卡死"。
 2. **协议不变量 `size = params.split(" ")` 的长度**，而非字节数（`api.py:160-171`），注释记录了这是写通路曾被 MCU 拒绝的根因。
 3. **实体表宽度契约**：`WRITABLE_SWITCHES`(6×4)、`WRITABLE_SELECTS`(4×6)、`AMBIENT_LIGHT_SWITCHES`(3×4)、`BUTTON_DEFS`(30×5) 必须与消费者解包宽度一致，否则整集成 unavailable；该事故已固化为 AST 测试（`tests/test_const_contract.py:1-15`）。
-4. **单轮询源**：所有实体读状态都取自 `coordinator.data`，不再各自发 GET（除写后确认），这是 58 个实体只产生一条轮询链的原因。
+4. **单轮询源**：所有实体读状态都取自 `coordinator.data`，不再各自发 GET（除写后确认），这是 48 个实体只产生一条轮询链的原因。
 5. **写后乐观 + 触发刷新**的统一模式：写成功即改 `coordinator.data` 并 `async_request_refresh()`（`number.py:129-133`, `select.py:110-113`, `media_player.py:159-163`）。
 
 ## 结构性风险线索（逻辑视图视角，详见 risk.md）

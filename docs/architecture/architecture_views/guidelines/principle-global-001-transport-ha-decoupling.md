@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-001
 description: "协议传输层（api.py）必须保持零 Home Assistant 依赖：只用 aiohttp + stdlib，从而让协议编解码与错误分类能在没有 HA 运行时的环境里被离线单测与 tools/ 脚本直接复用。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 架构
 principle_scope: global
 ---
@@ -50,5 +50,5 @@ principle_scope: global
 
 - [ ] `grep -n "homeassistant" custom_components/epson_ef/api.py` 无命中。
 - [ ] 新增命令方法的返回值可被不依赖 HA 的单测断言（无 HA 对象入参）。
-- [ ] `python3 -m pytest tests/ -q` 仍全绿（当前基线 64 passed）。
+- [ ] `python3 -m pytest tests/ -q` 仍全绿（当前基线 71 passed）。
 - [ ] 若新增异常类型，是否属于 `EpsonApiError` 家族、并在平台层有对应的用户语义转换？

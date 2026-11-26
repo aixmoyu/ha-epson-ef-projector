@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: "entry-core 的内部设计：一个无状态装配函数（setup）+ 一个对称的拆卸函数（unload）+ 两组注册表治理函数（身份迁移 / 遗留清理）+ 三条配置流 + 两个服务 + 一个诊断导出。核心模型是 config entry 的生命周期状态机（含 v1→v2 版本迁移），关键不变量是『身份先解析、注册表先修好、平台最后转发』与『服务随条目计数装卸』。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 id: entry-core
 ---
 
@@ -343,7 +343,7 @@ flowchart LR
     CFG -->|"poll_interval（options 优先）"| CO["Ef50Coordinator"]
     API["EpsonApi"] --> HD
     CO --> HD
-    HD -->|"7 平台读取 coordinator/base_id"| ENT["58 个实体"]
+    HD -->|"7 平台读取 coordinator/base_id"| ENT["48 个实体"]
     SVC["send_key / raw_request"] -->|"_resolve_api"| HD
     SVC -->|"result"| EV["epson_ef_response 事件"]
     HD -->|"只读快照"| DIAG["诊断下载"]

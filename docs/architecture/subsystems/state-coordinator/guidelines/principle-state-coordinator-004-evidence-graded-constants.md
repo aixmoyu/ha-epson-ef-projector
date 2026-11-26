@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-state-coordinator-004
 description: 每个值域常量与语义映射必须在紧邻注释里标注证据等级（真机回环实测 / 原厂 固件静态分析 / menu.json 定义 / 未确认假设），并在映射不确定时保留原始值供反查。常量若无生产消费者必须删除或显式标为回归哨兵。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 治理
 principle_scope: module
 ---

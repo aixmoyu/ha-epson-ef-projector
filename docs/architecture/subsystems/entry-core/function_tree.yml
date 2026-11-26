@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 模块功能树 — entry-core
 # project: "ha-epson-ef-projector"
-# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 # 范围: custom_components/epson_ef/{__init__.py,config_flow.py,diagnostics.py,
 #       services.py} = 221 + 132 + 39 + 102 = 494 行
 # 结构: 顶层节点列表 (R1); directory → function → point/spec/constraint

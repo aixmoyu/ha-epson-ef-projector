@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-003
 description: 对固件不可读的状态，实体必须同时具备三件套——RestoreEntity（跨重启保持最后已知值）、assumed_state=True（显式声明这是假设值）、raw_value/时间戳属性（可核对）——并且写成功才翻转本地值。当前 7 个实体完整遵守，而媒体播放器的静音只做了 RestoreEntity，缺 assumed_state，是唯一不合规点。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 架构
 principle_scope: module
 ---

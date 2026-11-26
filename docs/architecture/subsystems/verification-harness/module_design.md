@@ -2,16 +2,16 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: "verification-harness 由三层构成：离线验证层（tests/，伪包注入 + AST 静态契约，64 用例 0.2s 跑完）、真机现场分析层（tools/，20 个 importlib 直载 api.py 的探测/验收脚本）、门禁执行层（单一 GitHub Actions workflow，2 条命令）。三层共享同一条设计前提——生产传输层 api.py 零 HA 依赖，因此可以在没有 Home Assistant 的机器上被完整验证；而所有 import HA 的装配与平台模块则完全落在验证之外。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 模块设计：验证与现场分析设施 (verification-harness)
 
 ## 模块定位与核心职责
 
-- **一句话定义**：本模块是"让 3055 行生产代码在没有 Home Assistant、没有投影仪（测试部分）的条件下仍可被断言"的设施集合——它不产出运行时行为，只产出**可信度**。
+- **一句话定义**：本模块是"让 2996 行生产代码在没有 Home Assistant、没有投影仪（测试部分）的条件下仍可被断言"的设施集合——它不产出运行时行为，只产出**可信度**。
 - **核心业务/技术能力**：
-  1. **离线断言**：64 个用例覆盖 Digest 握手、电源态三分判定、32 处命令载荷断言（分布在 20 个用例方法中，实测统计见下）、真机缺陷回归、4 张配置表的宽度契约、pyflakes 名字级检查。
+  1. **离线断言**：71 个用例覆盖 Digest 握手、电源态三分判定、32 处命令载荷断言（分布在 20 个用例方法中，实测统计见下）、真机缺陷回归、4 张配置表的宽度契约、pyflakes 名字级检查。
   2. **真机回落**：20 个脚本用 `importlib` 直载生产 `api.py`（20/20），对着真实固件验证"代码写的字节 == 固件接受的字节"。
   3. **门禁执行**：唯一 CI 在 push/PR 上跑 `ruff --select F,E9` 与 `unittest discover`。
 - **模块规模实测**：`tests/` 4 文件 / 1020 行；`tools/` 20 个 .py（2005 行）+ 1 个 .sh（56 行）+ 2 个 .json（306 行）+ README.md（55 行），`git ls-files tools` = 24 项；CI 1 文件 24 行。
@@ -89,7 +89,7 @@ graph TD
 | `WRITABLE_SWITCHES` | 6 行 × 4 元组 | `const.py:53-66` | 宽度 4；解包点 `coordinator.py:92`、`switch.py:38` |
 | `WRITABLE_SELECTS` | 4 行 × **6** 元组 | `const.py:75-92` | 宽度 6；解包点 `coordinator.py:97`、`select.py:40` |
 | `AMBIENT_LIGHT_SWITCHES` | 3 行 × 4 元组 | `const.py:138-142` | 宽度 4；解包点 `switch.py:45` |
-| `BUTTON_DEFS` | 30 行 × 5 元组 | `button.py:17-83` | 宽度 5；解包点 `button.py:96` |
+| `BUTTON_DEFS` | 22 行 × 5 元组 | `button.py:26-76` | 宽度 5；解包点 `button.py:86` |
 | `STANDBY_MODE_OPTIONS` | dict 2 项 | `const.py:27-31` | 行为断言 `tests/test_api.py:282-296`（不在 AST 契约内） |
 | `enum_map` | `{SMFConfigID: 71, SMFNotifyID: 27, ConfigResultCode: 0}` | `tools/enum_map.json` | 与生产代码 46 CONFIG + 20 NOTIFY 全命中 |
 
@@ -250,7 +250,7 @@ flowchart LR
 
 | 名称 | 描述 | 请求方式 | 请求参数 | 返回参数 | 错误码 |
 |-|-|-|-|-|-|
-| 离线测试入口 | 全量跑 64 用例 | `python3 -m pytest tests/ -q` 或 `python3 -m unittest discover -s tests -v` | 无 | `64 passed` / `Ran 64 tests ... OK` | 失败用例 → rc=1 |
+| 离线测试入口 | 全量跑 64 用例 | `python3 -m pytest tests/ -q` 或 `python3 -m unittest discover -s tests -v` | 无 | `71 passed` / `Ran 64 tests ... OK` | 失败用例 → rc=1 |
 | 单文件直跑 | 只跑该文件的类（**注意会漏跑**） | `python3 tests/<file>.py` | 无 | `Ran 42/3/7/1 tests`（实测） | rc=0（即使漏跑） |
 | 真机探测 | 对设备发 pjctl 命令 | `python3 tools/<script>.py <投影仪IP> [port] [短名,...]` | `argv[1]` 或 `EPSON_HOST` | 人读文本 | 无统一码：用法错误 `sys.exit(非0)`（12 处），逻辑失败 rc=0 |
 | CI 门禁 | 自动 lint + test | GitHub `push` / `pull_request` | — | Actions 结论 | step 失败 → workflow 失败 |
@@ -286,13 +286,13 @@ flowchart LR
 
 ## 实测验证（本模块最重要的证据）
 
-> 环境：macOS + Python 3.13.13 + pytest 9.1.1 + aiohttp 3.14.5 + pyflakes 4.1.0 + ruff 0.15.15。全部命令在 `/Users/li/Projects/ha-epson-ef-projector` 下执行，`base_commit = 2ac3d73`。
+> 环境：macOS + Python 3.13.13 + pytest 9.1.1 + aiohttp 3.14.5 + pyflakes 4.1.0 + ruff 0.15.15。全部命令在 `/Users/li/Projects/ha-epson-ef-projector` 下执行，`base_commit = 620791f`。
 
 ### 命令 × 真实输出 × 退出码
 
 | # | 命令 | 真实输出（摘要） | 退出码 | 结论 |
 |-|-|-|-|-|
-| 1 | `python3 -m pytest tests/ -q` | `................................................................ [100%]`<br/>`64 passed in 0.20s` | 0 | 全绿；但 **pytest 未声明为依赖**（无 requirements/pyproject，CI 不装） |
+| 1 | `python3 -m pytest tests/ -q` | `................................................................ [100%]`<br/>`71 passed in 0.20s` | 0 | 全绿；但 **pytest 未声明为依赖**（无 requirements/pyproject，CI 不装） |
 | 2 | `python3 -m unittest discover -s tests -v` | `Ran 64 tests in 0.177s`<br/>`OK` | 0 | 与 CI 完全同款；唯一能跑满 64 的方式 |
 | 3 | `python3 tests/test_api.py` | `..........................................`<br/>`Ran 42 tests in 0.024s` → `OK` | 0 | **只跑 42/51**：`unittest.main()` 在 `:507-508`，其后的 `FocusAbsoluteTests`(3)、`ReadHelperTests`(4)、`PowerStateTests`(2) 共 **9 个用例被跳过** |
 | 4 | `python3 tests/test_const_contract.py` | `Ran 3 tests in 0.085s` → `OK` | 0 | 3/3 全跑（`unittest.main()` 在文件末尾 `:145-146`） |
@@ -399,7 +399,7 @@ flowchart LR
 
 ### 设计哲学
 
-- **「无 HA 优先」而非「模拟 HA」**：整个仓库没有 `conftest.py`、没有 fixture、没有 `pytest-homeassistant-custom-component`。面对"测试需要 HA 但环境没有 HA"，选择的是**删掉被测对象的 HA 依赖**（`api.py` 零 import HA）而不是**伪造 HA**。这在 3055 行 / 58 实体的规模下是理性的，但代价明确：装配层零覆盖（`__init__.py` 221 行、7 个平台文件全部不可测）。
+- **「无 HA 优先」而非「模拟 HA」**：整个仓库没有 `conftest.py`、没有 fixture、没有 `pytest-homeassistant-custom-component`。面对"测试需要 HA 但环境没有 HA"，选择的是**删掉被测对象的 HA 依赖**（`api.py` 零 import HA）而不是**伪造 HA**。这在 2996 行 / 48 实体的规模下是理性的，但代价明确：装配层零覆盖（`__init__.py` 221 行、7 个平台文件全部不可测）。
 - **「静态契约优于运行时断言」**：凡是"导入即爆炸"的耦合，就用 AST 而不是 import 去检查（`test_const_contract.py`、`test_regressions.py` 的三个 AST 类）。这让 CI 在没有 HA 的情况下仍能覆盖 12 个 HA 依赖模块里的**结构性约束**（表宽度、清理表内容、实参顺序、调用存在性）。
 - **「一个 workflow、两条命令」**：不做矩阵、不做版本交叉、不做 hassfest。门禁的野心被刻意压到"只要能拦住语法错误与解包宽度错误"。实测效果：`ruff check .` 有 3 个错误、`tools/` 一跑即 NameError、11 个用例可被漏跑，CI 依然全绿。
 - **「真机是唯一事实源，脚本是它的临时探针」**：`tools/` 的 20 个脚本从不被 CI 执行、从不被生产 import、彼此不共享代码，允许腐化。这是主动取舍：脚本的生命周期只有"一轮现场分析"，用完即弃，不值得工程化。

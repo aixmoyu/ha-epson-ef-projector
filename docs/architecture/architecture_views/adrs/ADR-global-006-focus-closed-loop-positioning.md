@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-006
 description: "对焦定位没有固件的 set-absolute 命令，且 INC/DEC 步长非线性（换向后首步 ±10、同向后续 ±1），因此放弃『按步数换算』改为『MAX/MIN 连续移动 + 按剩余距离定时 + OFF + 回读 POS』的闭环，容差 3、最多 14 次。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "对焦绝对定位采用连续移动闭环而非步数换算"
 date: 2026-11-07

@@ -8,7 +8,7 @@ id: ADR-pjctl-transport-002
 
 description: "电源状态判定采用『两级探针 + 单向异常重分类』：先用恒应答的 CONFIG_GET_PRODUCT_NAME 证活（失败→Unavailable，Timeout 升级为 Unavailable），再用仅唤醒态应答的 CONFIG_GET_LIGHT_TIME 判态（任何失败→off）。失败被分成四类异常，供上层分别决定重试/降级/上报。"
 
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 
 status: accepted
 
@@ -33,7 +33,7 @@ accepted
 
 ## 1. 背景
 
-**业务背景**：整个集成的一切行为都以"投影仪开还是关"为前提——实体可用性、诊断轮是否执行、写操作是否被允许、电源按钮该不该发盲 toggle 键。判错的代价很高：把待机判成不可达会让 58 个实体全部 `unavailable`；把断电判成"活着但卡住"会让 `turn_on` 静默无效。
+**业务背景**：整个集成的一切行为都以"投影仪开还是关"为前提——实体可用性、诊断轮是否执行、写操作是否被允许、电源按钮该不该发盲 toggle 键。判错的代价很高：把待机判成不可达会让 48 个实体全部 `unavailable`；把断电判成"活着但卡住"会让 `turn_on` 静默无效。
 
 **技术背景**：固件没有统一的 power-state 查询命令。实测（`api.py:225-233` 的 docstring）得到两条性质相反的观察：
 

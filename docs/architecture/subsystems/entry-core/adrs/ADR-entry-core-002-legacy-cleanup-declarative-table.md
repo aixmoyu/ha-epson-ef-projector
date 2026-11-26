@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entry-core-002
 description: "为遗留实体清理选择『声明式后缀表 + 按条目遍历注册表』，而不是按 unique_id 反查或全局扫描。直接动因是一次真实事故：async_get_entity_id 参数传反导致清理静默失效、孤儿实体长期残留。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "用声明式清理表 + 条目内遍历清偿注册表孤儿"
 date: 2026-11-07
@@ -27,7 +27,7 @@ accepted（实现于 3.10.0 真机测试后的修复轮）
 
 **技术背景**：HA 的实体注册表是持久的。上一版本创建过、新版本不再创建的实体，注册项仍留在 `.storage/core.entity_registry` 中，永久显示 `unavailable`。集成没有"托管回收"机制，只能自己删除。
 
-**核心问题**：在 58 个实体的固定清单、且历史版本曾创建过不同清单的前提下，如何在每次 setup 时安全、可重入地删除"本版本不再创建"的注册项，且不误删仍在用的实体？
+**核心问题**：在 48 个实体的固定清单、且历史版本曾创建过不同清单的前提下，如何在每次 setup 时安全、可重入地删除"本版本不再创建"的注册项，且不误删仍在用的实体？
 
 **约束条件**：
 

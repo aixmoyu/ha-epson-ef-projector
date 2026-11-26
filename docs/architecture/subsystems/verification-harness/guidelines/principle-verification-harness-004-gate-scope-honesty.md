@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-004
 description: "门禁的每一项都必须在『范围』与『规则集』两处显式声明，且声明范围要与保障承诺一致：CI 只查 custom_components+tests 的 F,E9 规则，因此 tools/ 与 HA 装配层的缺陷天然不可见——不得以 CI 全绿推断代码正确，也不得在保障缺口存在时扩大『已验证』的说法。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 治理
 principle_scope: module
 ---

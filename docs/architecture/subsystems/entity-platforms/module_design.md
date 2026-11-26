@@ -1,54 +1,54 @@
 ---
 project: "ha-epson-ef-projector"
 type: module-design
-description: entity-platforms 是 7 个 HA 平台模块的集合，用 17 个实体类 + 4 张声明式元组表（3 张在 const.py、1 张在 button.py），把 coordinator 的单一字典投影成 58 个实体。它的内部结构不是分层，而是「五种状态读/写模态 × 两种写通道」的二维矩阵：读侧全部收敛到 coordinator.data（零 IO），写侧分裂为 api 语义方法（15 实体）与直接拼命令串（40 实体）两条路径。核心设计张力在于「固件能力参差」——有读通路的走乐观回写+刷新，无读通路的退化为本地记忆 + assumed_state。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+description: entity-platforms 是 7 个 HA 平台模块的集合，用 16 个实体类 + 4 张声明式元组表（3 张在 const.py、1 张在 button.py），把 coordinator 的单一字典投影成 48 个实体。它的内部结构不是分层，而是「五种状态读/写模态 × 两种写通道」的二维矩阵：读侧全部收敛到 coordinator.data（零 IO），写侧分裂为 api 语义方法（14 实体）与直接拼命令串（31 实体）两条路径。核心设计张力在于「固件能力参差」——有读通路的走乐观回写+刷新，无读通路的退化为本地记忆 + assumed_state。
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 模块设计：entity-platforms（实体平台域）
 
 ## 模块定位与核心职责
 
-- **一句话定义**：把「一份每轮重建的状态字典」翻译成「用户可点、可读、可自动化的 58 个 Home Assistant 实体」，并把用户的每个意图翻译成一条（或一组）固件命令。
+- **一句话定义**：把「一份每轮重建的状态字典」翻译成「用户可点、可读、可自动化的 48 个 Home Assistant 实体」，并把用户的每个意图翻译成一条（或一组）固件命令。
 - **核心业务/技术能力**：
   1. **投影**：7 个平台的 `async_setup_entry` 从 `hass.data[DOMAIN][entry_id]` 取 `coordinator`/`base_id`，实例化并注册实体（`media_player.py:35-38`、`button.py:91-98`、`number.py:52-63`）。
   2. **读**：全部实体 property 只读 `coordinator.data`，**零按需 IO**（唯一例外是电源动作前的 `probe_state`，`media_player.py:151-157`）。
-  3. **写**：55 个可写实体承载全部用户意图；写后按模态回填缓存（`number.py:129-133`、`switch.py:109-111`、`select.py:110-113`、`media_player.py:159-163`）。
-  4. **降级**：对固件不可读的 7 类能力，用 `RestoreEntity` + `assumed_state` 诚实标记为假设值（`switch.py:120-185`、`switch.py:188-246`、`switch.py:249-306`、`select.py:167-219`、`number.py:399-458`）。
+  3. **写**：45 个可写实体承载全部用户意图；写后按模态回填缓存（`number.py:129-133`、`switch.py:109-111`、`select.py:102-105`、`media_player.py:159-163`）。
+  4. **降级**：对固件不可读的 7 类能力，用 `RestoreEntity` + `assumed_state` 诚实标记为假设值（`switch.py:120-185`、`switch.py:188-246`、`switch.py:249-306`、`select.py:111-162`、`number.py:399-458`）。
   5. **错误翻译**：把传输层 4 类异常收敛成用户可读的 `HomeAssistantError`（本模块 7 个文件共 **21 处** `raise HomeAssistantError`：media_player 4 / number 7 / select 5 / switch 4 / button 1 / sensor 0 / binary_sensor 0；services.py 另有 5 处）。
 
-## 58 实体的精确构成
+## 48 实体的精确构成
 
-> 逐平台数出，表驱动项按 `BUTTON_DEFS` 实际行数推导（30 行，`button.py:17-83`），非估算。
+> 逐平台数出，表驱动项按 `BUTTON_DEFS` 实际行数推导（22 行，`button.py:26-76`），非估算。
 
 | 平台 | 实体类 | 实体数 | 装配方式 | 证据 |
 |-|-|-|-|-|
 | `media_player` | `Ef50MediaPlayer` | 1 | 单元素列表 | `media_player.py:36-38` |
 | `sensor` | `Ef50LightHoursSensor`, `Ef50DistanceSensor`（共用 `_Ef50Sensor` 基类） | 2 | 列表字面量 | `sensor.py:28-33` |
-| `select` | `Ef50StandbyModeSelect` ×1, `Ef50ConfigSelect` ×4, `Ef50AmbientModeSelect` ×1 | 6 | **3 次** `async_add_entities`：单例 + `WRITABLE_SELECTS` 推导 + 单例 | `select.py:33-45` |
+| `select` | `Ef50ConfigSelect` ×3, `Ef50AmbientModeSelect` ×1 | 4 | **2 次** `async_add_entities`：`WRITABLE_SELECTS` 推导 + 单例 | `select.py:30-40` |
 | `binary_sensor` | `Ef50ConnectivitySensor` | 1 | 单元素列表 | `binary_sensor.py:24-26` |
-| `button` | `Ef50Button` ×30 | 30 | **表驱动推导**：`BUTTON_DEFS` 30 行 × 单类 | `button.py:92-98`, `:17-83` |
+| `button` | `Ef50Button` ×22 | 22 | **表驱动推导**：`BUTTON_DEFS` 22 行 × 单类 | `button.py:78-89`, `:26-76` |
 | `switch` | `Ef50ConfigSwitch` ×6, `Ef50AmbientLightSwitch` ×3, `Ef50TestPatternSwitch` ×1, `Ef50AutoContrastSwitch` ×1 | 11 | **4 次** `async_add_entities`：6 表驱动 + 3 表驱动 + 2 单例 | `switch.py:34-53` |
 | `number` | `Ef50LightOutputNumber`, `Ef50RefreshTimerNumber`, `Ef50FocusNumber`, `Ef50AmbientBrightnessNumber`（列表）+ `Ef50ColorGainNumber` ×3（**生成器 `extend`**） | 7 | 列表字面量 + `entities.extend(generator)` | `number.py:53-63`, `:40-44` |
-| **合计** | **17 个实体类** | **58** | 17 次具体化 = 4 单例 + 1 三元组生成器 + 30 + 6 + 4 + 3 + 3 + 2 | — |
+| **合计** | **16 个实体类** | **48** | 16 次具体化 = 4 单例 + 1 三元组生成器 + 22 + 6 + 3 + 3 + 3 + 2 | — |
 
-**表驱动推导的量**：`button` 30 + `switch` 6 + `switch` 3 + `select` 4 = **43 / 58（74%）** 的实体不是逐类实例化，而是「一个类 + 一张元组表 + 一次推导」。剩余 15 个是手写实例化（`number` 7、`select` 2、`switch` 2、`media_player` 1、`sensor` 2、`binary_sensor` 1）。`number.py` 的 RGB 三通道是唯一用 `extend(generator)` 的地方（`number.py:59-63`），因为三个通道共享 `_COLOR_GAIN_CHANNELS` 常量（`number.py:40-44`）而构造签名需要额外 `channel` 参数。
+**表驱动推导的量**：`button` 22 + `switch` 6 + `switch` 3 + `select` 3 = **34 / 48（71%）** 的实体不是逐类实例化，而是「一个类 + 一张元组表 + 一次推导」。剩余 14 个是手写实例化（`number` 7、`select` 1、`switch` 2、`media_player` 1、`sensor` 2、`binary_sensor` 1）。`number.py` 的 RGB 三通道是唯一用 `extend(generator)` 的地方（`number.py:59-63`），因为三个通道共享 `_COLOR_GAIN_CHANNELS` 常量（`number.py:40-44`）而构造签名需要额外 `channel` 参数。
 
-**读/写分布**：只读实体 3 个（sensor×2 + binary_sensor×1），可写实体 55 个。
+**读/写分布**：只读实体 3 个（sensor×2 + binary_sensor×1），可写实体 45 个。
 
 ## 内部架构与分层设计
 
 - **分层模式**：**无模块内分层**——7 个平台文件互不 import（实测 0 处跨平台 import），彼此只共享 `const.py` 的常量与 `coordinator.data` 的键名。真正的结构是二维模态矩阵：
 
-| 读模态 \ 写通道 | 语义方法（15） | 直接拼命令串（40） | 无写（3） | 小计 |
+| 读模态 \ 写通道 | 语义方法（14） | 直接拼命令串（31） | 无写（3） | 小计 |
 |-|-|-|-|-|
 | ① 只读 coordinator | — | — | `sensor`×2, `binary_sensor`×1 | 3 |
-| ② 乐观写 + 请求 refresh | `media_player`×1（电源）、`select.standby_mode`、`number`×6（light_output / refresh_timer / focus_position / color_gain×3） | `select` config×4（`select.py:107-113`） | — | 12 |
+| ② 乐观写 + 请求 refresh | `media_player`×1（电源）、`number`×6（light_output / refresh_timer / focus_position / color_gain×3） | `select` config×3（`select.py:99-107`） | — | 10 |
 | ③ 乐观写 + **不** refresh（有读通路） | — | `switch` config×6（`switch.py:104-111`） | — | 6 |
 | ④ 本地记忆 + `assumed_state` | `switch` ambient×3、`switch.test_pattern`、`switch.auto_contrast`、`number.ambient_brightness`、`select.ambient_mode` | — | — | 7 |
-| ⑤ 无状态动作 | — | `button`×30（`button.py:136-142`） | — | 30 |
+| ⑤ 无状态动作 | — | `button`×22（`button.py:110-116`） | — | 22 |
 
-> 交叉校验：**3 + 12 + 6 + 7 + 30 = 58**；按写通道另算 **语义方法 8+7 = 15**、**裸串 4+6+30 = 40**、**无写 3**，15+40+3 = 58。两个维度自洽。
+> 交叉校验：**3 + 10 + 6 + 7 + 22 = 48**；按写通道另算 **语义方法 7+7 = 14**、**裸串 3+6+22 = 31**、**无写 3**，14+31+3 = 48。两个维度自洽。
 > `media_player` 的**静音**不属于上表任一格：它是本地记忆但**不**声明 `assumed_state`，属于第 6 种模态；因该实体整体已计入②的 media_player 行，此处仅作标注，详见下节"模态分类的 3 个例外"。
 
 - **核心组件与分工**：
@@ -57,25 +57,24 @@ base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 |-|-|-|-|
 |`Ef50MediaPlayer`|唯一同时具备"状态机式写"（电源）与"盲 toggle"（静音）的实体；持有本模块唯一的 `asyncio.Lock`；同时是诊断属性的聚合出口|`probe_state`/`wait_for_state`/`send_keyevent`|`media_player.py:41-228`|
 |`_Ef50Sensor` + 2 子类|共享 `unique_id = {base_id}-{suffix}` 与 `DeviceInfo` 构造；子类只声明 `_suffix`/`translation_key`/单位/值解析|`coordinator.data`|`sensor.py:36-120`|
-|`Ef50ConfigSelect` / `Ef50ConfigSwitch`|一对同构的"档位/开关"适配器，参数全靠 `const` 表注入；存了 `_get_cmd` 但从不使用（读由协调器统一完成）|`WRITABLE_SELECTS`/`WRITABLE_SWITCHES`|`select.py:48-113`, `switch.py:56-117`|
-|`Ef50StandbyModeSelect`|唯一有专门映射函数的设置实体（中文标签 ↔ 0/1）|`const.standby_*_option`|`select.py:116-164`|
-|`Ef50AmbientModeSelect` / `Ef50AmbientLightSwitch` / `Ef50AmbientBrightnessNumber`|氛围灯三件套：同一命令 `CONFIG_SET_AMBIENT_LIGHT` 的三个子命令族（`1`/`3,4,5`/`9`），全部写-only|`set_ambient_mode`/`set_ambient_light`/`set_ambient_brightness`|`select.py:167-219`, `switch.py:120-185`, `number.py:399-458`|
+|`Ef50ConfigSelect` / `Ef50ConfigSwitch`|一对同构的"档位/开关"适配器，参数全靠 `const` 表注入；存了 `_get_cmd` 但从不使用（读由协调器统一完成）|`WRITABLE_SELECTS`/`WRITABLE_SWITCHES`|`select.py:43-107`, `switch.py:56-117`|
+|`Ef50AmbientModeSelect` / `Ef50AmbientLightSwitch` / `Ef50AmbientBrightnessNumber`|氛围灯三件套：同一命令 `CONFIG_SET_AMBIENT_LIGHT` 的三个子命令族（`1`/`3,4,5`/`9`），全部写-only|`set_ambient_mode`/`set_ambient_light`/`set_ambient_brightness`|`select.py:111-162`, `switch.py:120-185`, `number.py:399-458`|
 |`Ef50ConfigSwitch` + `Ef50TestPatternSwitch` + `Ef50AutoContrastSwitch`|"同值回写"型开关与"纯探测打通"型开关；后者注释明确承认效果未可感知验证|`request`/`set_test_pattern`/`set_auto_contrast`|`switch.py:56-306`|
 |`Ef50LightOutputNumber` / `Ef50RefreshTimerNumber`|有读通路的数值设置，`native_value` 走"轮询值优先 → 恢复值兜底"两级回退|`settings[...]` + `RestoreEntity`|`number.py:66-220`|
 |`Ef50FocusNumber`|唯一带闭环控制的实体：把"绝对位置"翻译成多轮"连续移动+定时+停止+回读"|`goto_focus`|`number.py:223-301`|
 |`Ef50ColorGainNumber`|一表三实例；读一条共享三元组，写整串|`diag["color_gain"]` + `set_color_gain`|`number.py:304-396`|
-|`Ef50Button`|"命令发射器"：单类 × 30 表行，无状态、永不 unavailable|`request(cmd, params)`|`button.py:101-142`|
+|`Ef50Button`|"命令发射器"：单类 × 22 表行，无状态、永不 unavailable|`request(cmd, params)`|`button.py:93-134`|
 
 ```mermaid
 graph TD
-    subgraph 平台层 Platform（7 文件 / 17 类 / 58 实体）
+    subgraph 平台层 Platform（7 文件 / 16 类 / 48 实体）
         MP["media_player ×1<br/>电源态机 + 盲 toggle"]
         SN["sensor ×2<br/>只读"]
         BS["binary_sensor ×1<br/>只读 + 恒可用"]
         SE["select ×6<br/>4 表驱动 + 2 单例"]
         SW["switch ×11<br/>6+3 表驱动 + 2 单例"]
         NB["number ×7<br/>4 单例 + 3 生成器"]
-        BT["button ×30<br/>1 类 × 30 表行"]
+        BT["button ×22<br/>1 类 × 22 表行"]
     end
     subgraph 读通道（全部零 IO）
         RD["coordinator.data<br/>state / light_hours / light_extra<br/>light_measured_at / settings / diag<br/>product / standby_mode"]
@@ -121,13 +120,12 @@ graph TD
 |`sensor.distance`|`data["diag"]["distance_mm"]`|`sensor.py:101-120`|
 |`binary_sensor.connectivity`|`coordinator.last_update_success`|`binary_sensor.py:54-56`|
 
-**② 乐观写 + 请求 refresh（协调器下一轮覆盖，12 实体）**
+**② 乐观写 + 请求 refresh（协调器下一轮覆盖，10 实体）**
 
 | 实体 | 回填位置 | 是否 refresh | 证据 |
 |-|-|-|-|
 |`media_player`（电源）|`data["state"]`|是（仅在 10s 未确认时）|`media_player.py:159-163`, `:165-176`|
-|`select.standby_mode`|`data["standby_mode"]`|是|`select.py:160-164`|
-|`select.{color_temp,dynamic_contrast,projection,picture_preference}`|`data["settings"][suffix]`|是|`select.py:110-113`|
+|`select.{dynamic_contrast,projection,picture_preference}`|`data["settings"][suffix]`|是|`select.py:99-107`|
 |`number.light_output`|`data["settings"]["light_output"]`|是|`number.py:129-133`|
 |`number.refresh_timer`|`data["settings"]["refresh_timer"]`|是|`number.py:216-220`|
 |`number.focus_position`|`data["settings"]["focus_position"]`|是|`number.py:297-301`|
@@ -155,7 +153,7 @@ graph TD
 2. **`Ef50ConnectivitySensor.available` 恒 True**（`binary_sensor.py:50-52`），理由是"连通性传感器必须保持可用才能报告 off"；若沿用其它实体的 `last_update_success` 覆写，离线时实体会消失，该传感器的存在意义归零。
 3. **`Ef50Button.available` 恒 True**（`button.py:132-134`），理由是"离线时保留按钮，按下会得到明确错误而不是被禁用"。两者是有意决策，不是遗漏。
 
-**另 7 处 `available` 覆写与基类语义完全等价（冗余）**：`CoordinatorEntity.available` 本身即 `coordinator.last_update_success and super().available`，因此 `media_player.py:96-97`、`number.py:258-260`（对焦）、`number.py:348-349`（色彩增益）、`select.py:89-90`、`select.py:139-140`、`switch.py:87-88`、`sensor.py:53-54` 的覆写不改变任何行为。其中 `number.py:258` 的注释声称"对焦读数只在唤醒状态有效，跟随协调器在线状态"——但跟随 `last_update_success` 并不等价于"跟随唤醒状态"（设备待机时 HTTP 仍可达，`last_update_success` 为 True），该注释与实现不符。
+**另 7 处 `available` 覆写与基类语义完全等价（冗余）**：`CoordinatorEntity.available` 本身即 `coordinator.last_update_success and super().available`，因此 `media_player.py:96-97`、`number.py:254-256`（对焦）、`number.py:343-345`（色彩增益）、`select.py:84-85`、`switch.py:87-88`、`sensor.py:53-54` 的覆写不改变任何行为（共 6 处；`Ef50StandbyModeSelect` 删除后少了一处）。其中 `number.py:254` 的注释声称"对焦读数只在唤醒状态有效，跟随协调器在线状态"——但跟随 `last_update_success` 并不等价于"跟随唤醒状态"（设备待机时 HTTP 仍可达，`last_update_success` 为 True），该注释与实现不符。
 
 - **状态转换逻辑（电源，唯一显式状态机）**：
 
@@ -210,43 +208,43 @@ erDiagram
     TABLE ||--o{ ENTITY : "解包构造"
 ```
 
-关系语义：**1 个设备聚合 58 个实体**（全部 `identifiers={(DOMAIN, base_id)}`）；**1 张表派生 N 个同构实体**；**1 份 `coordinator.data` 既是唯一读源也是写后回填目标**（双向箭头是设计要害：缓存被实体当本地变量用）。
+关系语义：**1 个设备聚合 48 个实体**（全部 `identifiers={(DOMAIN, base_id)}`）；**1 张表派生 N 个同构实体**；**1 份 `coordinator.data` 既是唯一读源也是写后回填目标**（双向箭头是设计要害：缓存被实体当本地变量用）。
 
 ## unique_id 的四套后缀约定
 
 |约定|模式|实例数|实例|证据|
 |-|-|-|-|-|
-|① 平台前缀式|`{base_id}-<platform>-{key}`|**38**|`{base_id}-button-{suffix}`（30）、`{base_id}-number-{key}`（7：light_output / refresh_timer / focus_position / ambient_brightness / color_gain_{red,green,blue}）、`{base_id}-select-ambient_mode`（1）|`button.py:122`、`number.py:90/169/248/338/424`、`select.py:189`|
-|② setting 式|`{base_id}-setting-{suffix}`|**15**|switch 11 个 + select 4 个**共用同一前缀**|`switch.py:78/148/210/270`；`select.py:75`|
-|③ 裸后缀式|`{base_id}-{suffix}`|**4**|`{base_id}-connectivity`、`{base_id}-standby_mode`、`{base_id}-light_hours`、`{base_id}-distance`|`binary_sensor.py:41`、`select.py:130`、`sensor.py:44`|
+|① 平台前缀式|`{base_id}-<platform>-{key}`|**30**|`{base_id}-button-{suffix}`（22）、`{base_id}-number-{key}`（7：light_output / refresh_timer / focus_position / ambient_brightness / color_gain_{red,green,blue}）、`{base_id}-select-ambient_mode`（1）|`button.py:114`、`number.py:89/167/244/333/418`、`select.py:132`|
+|② setting 式|`{base_id}-setting-{suffix}`|**14**|switch 11 个 + select 3 个**共用同一前缀**|`switch.py:78/148/209/268`；`select.py:70`|
+|③ 裸后缀式|`{base_id}-{suffix}`|**3**|`{base_id}-connectivity`、`{base_id}-light_hours`、`{base_id}-distance`|`binary_sensor.py:41`、`sensor.py:44`|
 |④ 直接用 base_id|`{base_id}`|**1**|媒体播放器|`media_player.py:68`|
-|—|**合计**|**58**|38+15+4+1，实测 58 个 suffix **互不重复**、58 个 `(platform, unique_id)` 亦互不重复|—|
+|—|**合计**|**48**|30+14+3+1，实测 48 个 suffix **互不重复**、48 个 `(platform, unique_id)` 亦互不重复|—|
 
 **潜在冲突点核查（逐项）**：
 
-- **`setting-` 前缀的 switch/select 是否撞车？** switch 侧后缀集 = {auto_correction, auto_fit_wall_color, movement_sensor, smart_eye_protection, startup_correction, vmute, ambient_light, welcome_light, touch_sensor_light, auto_contrast, test_pattern}（11 个）；select 侧 = {color_temp, dynamic_contrast, projection, picture_preference}（4 个）。**交集为空**（实测 15 个后缀全不重复）。且 HA 实体注册表的 unique_id 唯一性作用域是 `(platform, unique_id)`，跨平台同名后缀本不冲突——因此这一处**不是**现实冲突，但它是**未受保护的隐式约定**：表里加一行叫 `color_temp` 的 switch 不会报错，而是与 select 抢同一个 `coordinator.data["settings"]["color_temp"]` 键（见下一条）。
+- **`setting-` 前缀的 switch/select 是否撞车？** switch 侧后缀集 = {auto_correction, auto_fit_wall_color, movement_sensor, smart_eye_protection, startup_correction, vmute, ambient_light, welcome_light, touch_sensor_light, auto_contrast, test_pattern}（11 个）；select 侧 = {dynamic_contrast, projection, picture_preference}（3 个）。**交集为空**（实测 14 个后缀全不重复）。且 HA 实体注册表的 unique_id 唯一性作用域是 `(platform, unique_id)`，跨平台同名后缀本不冲突——因此这一处**不是**现实冲突，但它是**未受保护的隐式约定**：表里加一行叫 `dynamic_contrast` 的 switch 不会报错，而是与 select 抢同一个 `coordinator.data["settings"]["dynamic_contrast"]` 键（见下一条）。
 - **真正的冲突面在数据层而非注册表**：`settings` 是**扁平字典，键 = suffix**，由 `WRITABLE_SWITCHES` 与 `WRITABLE_SELECTS` 共同写入（`coordinator.py:92-101`）。两张表的后缀若有交集，后写者会静默覆盖前者的值，表现为"两个实体联动、其中一个永远显示对方的值"。
 - **`diag` 与 `settings` 有 6 个键同名**：`vmute`、`color_temp`、`dynamic_contrast`、`movement_sensor`、`smart_eye_protection`、`startup_correction` 同时存在于 `probes` 白名单（`coordinator.py:63-83`）与设置表回读（`:92-101`）。后果：慢轮对**同一条 GET 命令发两次请求**（每诊断轮多 6 次 HTTP），且同一真值存在两份副本（`diag` 版供给 `media_player` 属性白名单 `media_player.py:122-127`，`settings` 版供给开关/选择器）。
-- **`standby_mode` 的历史陷阱**：`__init__.py:146-150` 的清理表登记了 `"sensor": ("standby_mode", ...)`，会把 `(sensor, "{base_id}-standby_mode")` 从注册表删除。当前 `standby_mode` 是 **select**（`select.py:130`），键不同故安全；但若有人把它搬回 sensor，**每次 reload 都会删掉活着的实体**。这与裸后缀式③的命名叠在一起，是本次核查发现的最高危命名耦合。
+- **`standby_mode` 的历史陷阱（已随实体删除收敛）**：`__init__.py` 的清理表同时登记了 `"sensor": ("standby_mode", ...)` 与 `"select": ("standby_mode", ...)`，用于删除历史遗留。注意清理表的匹配键是 `(platform, unique_id)`：`sensor` 侧对应的是 `{base_id}-standby_mode`、`select` 侧对应 `{base_id}-standby_mode`，两者平台不同、互不误删；但若将来把某个后缀同名实体搬回另一平台，**每次 reload 都会删掉活着的实体**。这是命名耦合的长期风险，加实体前必须核对清理表。
 
 ## 命名与设备聚合约定
 
 ### `_attr_has_entity_name` / `_attr_translation_key` 的使用规律
 
-**规律：17 个具体实体类全部 `_attr_has_entity_name = True`；57 个实体用 `translation_key`，仅媒体播放器用 `_attr_name`。** 实测 16 处声明覆盖 17 个具体类——其中 `sensor.py:37` 声明在基类 `_Ef50Sensor` 上，由 `Ef50LightHoursSensor`/`Ef50DistanceSensor` 两个子类继承；其余 15 处逐一覆盖 15 个具体类（`binary_sensor.py:32`、`button.py:104`、`media_player.py:46`、`number.py:76/155/235/317/410`、`select.py:55/119/177`、`switch.py:59/132/201/261`）。**唯一不写 `_attr_name` 以外名称来源的，正是媒体播放器**（它是 16 处声明中唯一用 `_attr_name` 而非 `translation_key` 的）。
+**规律：16 个具体实体类全部 `_attr_has_entity_name = True`；47 个实体用 `translation_key`，仅媒体播放器用 `_attr_name`。** 实测 15 处声明覆盖 16 个具体类——其中 `sensor.py:37` 声明在基类 `_Ef50Sensor` 上，由 `Ef50LightHoursSensor`/`Ef50DistanceSensor` 两个子类继承；其余 14 处逐一覆盖 14 个具体类（`binary_sensor.py:32`、`button.py:96`、`media_player.py:46`、`number.py:75/153/231/312/404`、`select.py:50/120`、`switch.py:59/132/200/259`）。**唯一不写 `_attr_name` 以外名称来源的，正是媒体播放器**（它是 16 处声明中唯一用 `_attr_name` 而非 `translation_key` 的）。
 
 翻译键的三种来源：
 
 | 来源 | 键数 | 覆盖实体数 | 取值方式 | 证据 |
 |-|-|-|-|-|
-|类内字面量|11|11|`_attr_translation_key = "light_hours"` 等|`sensor.py:61/95`、`number.py:77/156/236/411`、`select.py:120/178`、`switch.py:202/262`、`binary_sensor.py:33`|
-|生成器注入|3|3|`_attr_translation_key = key`，key 来自 `_COLOR_GAIN_CHANNELS` 三元组|`number.py:40-44`, `:336`, `:338`|
-|表列注入（switch 6 + ambient 3 + select 4）|13|13|`_attr_translation_key = key`，key 来自表第 2 列|`switch.py:77`, `:147`；`select.py:74`|
-|表列注入（button）|30|30|`self._attr_translation_key = key`（构造参数）|`button.py:121`|
+|类内字面量|10|10|`_attr_translation_key = "light_hours"` 等|`sensor.py:61/95`、`number.py:76/154/232/405`、`select.py:121`、`switch.py:201/260`、`binary_sensor.py:33`|
+|生成器注入|3|3|`_attr_translation_key = key`，key 来自 `_COLOR_GAIN_CHANNELS` 三元组|`number.py:40-44`, `:331`, `:333`|
+|表列注入（switch 6 + ambient 3 + select 3）|12|12|`_attr_translation_key = key`，key 来自表第 2 列|`switch.py:77`, `:147`；`select.py:69`|
+|表列注入（button）|22|22|`self._attr_translation_key = key`（构造参数）|`button.py:113`|
 |**无翻译键**|0|**1**|**媒体播放器**用 `_attr_name`|`media_player.py:69`|
-|**合计**|**57**|**58**|57 个键各覆盖 1 个实体 + media_player|—|
+|**合计**|**47**|**48**|47 个键各覆盖 1 个实体 + media_player|—|
 
-`strings.json` 的 `entity` 段共 **57 个键**，与代码的 57 个键**完全相同**（实测双向差集均为空）；`translations/en.json` 与 `translations/zh-Hans.json` 的键集亦与 `strings.json` 完全一致（三文件键数：sensor 2 / number 7 / select 6 / binary_sensor 1 / button 30 / switch 11 = 57）。**即：代码翻译键 ↔ strings.json ↔ 两份翻译文件，四者一一对应，无缺键也无冗余键。**
+`strings.json` 的 `entity` 段共 **47 个键**，与代码的 47 个键**完全相同**（实测双向差集均为空）；`translations/en.json` 与 `translations/zh-Hans.json` 的键集亦与 `strings.json` 完全一致（三文件键数：sensor 2 / number 7 / select 4 / binary_sensor 1 / button 22 / switch 11 = 47）。**即：代码翻译键 ↔ strings.json ↔ 两份翻译文件，四者一一对应，无缺键也无冗余键。**
 
 **为什么 media_player 例外**（`media_player.py:69`）：
 
@@ -282,7 +280,7 @@ self._attr_name = entry.data.get("name", DEFAULT_NAME)   # :69
 - 15 处逐字相同：`model=(coordinator.data or {}).get("product") or "Epson EF Projector"`。
 - `media_player.py:87` 先取局部变量 `model = (c.data or {}).get("product") or "Epson EF Projector"` 再传入 —— 等价。
 - `manufacturer` 15 处均为字面量 `"EPSON"`（无常量）。
-- `identifiers` 全部为 `{(DOMAIN, base_id)}`，即 **58 个实体聚合成 1 个设备**。
+- `identifiers` 全部为 `{(DOMAIN, base_id)}`，即 **48 个实体聚合成 1 个设备**。
 
 **与既有材料的数量差异（Doc Distrust 记录）**：本次任务简报称"11 处重复构造 DeviceInfo"，`architecture_views/logical_view.md` 亦未给出该数目；但 `grep -c "DeviceInfo(" custom_components/epson_ef/*.py` 实测为 **16 处**（binary_sensor 1、button 1、media_player 1、number 5、select 3、sensor 1、switch 4）。差异根因：以"实体类数"（17 类，其中 `_Ef50Sensor` 基类 1 处覆盖 2 实体）与"构造点数"（16）口径不同，且 `number.py` 一个文件就有 5 处。本文件采用**构造点数 16**，并已在风险表 R-EP 技术债务条目中同步。
 
@@ -376,10 +374,10 @@ erDiagram
         int light_hours "灯时（仅唤醒可读，跨周期结转）"
         tuple light_extra "第二个灯时读数"
         string light_measured_at "ISO 时间戳（字符串，非 datetime）"
-        dict settings "13 个键：suffix -> 原始值字符串"
+        dict settings "12 个键：suffix -> 原始值字符串"
         dict diag "17 个键：诊断快照"
         string product "固件产品名"
-        string standby_mode "0|1"
+        string standby_mode "0|1（只读属性，不再有可写 select）"
     }
     SETTINGS {
         string auto_correction "switch"
@@ -388,7 +386,6 @@ erDiagram
         string smart_eye_protection "switch+diag 重复"
         string startup_correction "switch+diag 重复"
         string vmute "switch+diag 重复"
-        string color_temp "select+diag 重复"
         string dynamic_contrast "select+diag 重复"
         string projection "select"
         string picture_preference "select"
@@ -426,10 +423,10 @@ erDiagram
 
 |缓存对象|写入者|失效策略|一致性保证|
 |-|-|-|-|
-|`data["settings"][suffix]`|**13 个实体**：`switch` 6（`switch.py:109`）、`select` 4（`select.py:110`）、`number` 3 个键（`number.py:129/216/297`）|下一轮慢诊断轮由固件真值覆盖（`coordinator.py:116-119`）；非诊断轮由 carry-forward 原样搬回（`:150-153`）|**无**：无版本号、无 CAS、后写覆盖先写|
+|`data["settings"][suffix]`|**12 个实体**：`switch` 6（`switch.py:109`）、`select` 3（`select.py:102`）、`number` 3 个键（`number.py:129/216/297`）|下一轮慢诊断轮由固件真值覆盖（`coordinator.py:116-119`）；非诊断轮由 carry-forward 原样搬回（`:150-153`）|**无**：无版本号、无 CAS、后写覆盖先写|
 |`data["diag"]["color_gain"]`|`Ef50ColorGainNumber` ×3|同上（`:124-127`）|**无**：三通道并发即丢更新|
 |`data["state"]`|`Ef50MediaPlayer`|下一次快轮（≤15s）覆盖|**弱**：乐观值可能领先设备真实过渡状态|
-|`data["standby_mode"]`|`Ef50StandbyModeSelect`|慢轮覆盖|**无**|
+|`data["standby_mode"]`|无（entity 已删除，仅 media_player 只读属性）|慢轮覆盖|—|
 
 ### 数据流图
 
@@ -437,11 +434,11 @@ erDiagram
 flowchart LR
     FW["固件 pjctl"] -->|"快轮: state + light"| CO["Ef50Coordinator.data"]
     FW -->|"慢轮: diag/settings/product/standby_mode"| CO
-    CO -->|"property 只读"| RD["55 个实体的读属性"]
+    CO -->|"property 只读"| RD["45 个实体的读属性"]
     RD -->|"无 IO"| HA["HA state machine"]
     U["用户动作"] --> W{"写通道"}
-    W -->|"语义方法 15 实体"| SEM["EpsonApi.set_* / goto_focus / probe"]
-    W -->|"拼串 40 实体"| RAW["EpsonApi.request(cmd, params)"]
+    W -->|"语义方法 14 实体"| SEM["EpsonApi.set_* / goto_focus / probe"]
+    W -->|"拼串 31 实体"| RAW["EpsonApi.request(cmd, params)"]
     SEM --> FW
     RAW --> FW
     SEM -->|"成功"| WB["回填 data[...] + write_ha_state"]
@@ -456,8 +453,8 @@ flowchart LR
 1. **[待确认：对焦实体的值域应静态写死 0–264 还是跟随 `diag["focus_range"]` 动态取值？]**
    现状是静态常量（`const.py:119-120` → `number.py:237-238`），而协调器每慢轮都会读到真实行程并放在 `diag["focus_range"]`（`coordinator.py:110-112`），同时该值又被实体当作只读属性暴露（`number.py:274-280`）。也就是说：**界面显示的可用范围**与**实际可用范围**有两个来源，若换型号（非 HB71）或固件改变行程，滑条边界会与属性里的 `focus_range` 矛盾。代码中没有说明为何不采用动态值（例如：`_attr_native_min_value` 是类属性、动态更新需在 `async_added_to_hass` 后改写并在失败时回退）。
 
-2. **[待确认：30 个按钮与 11 个开关是否应设置 `entity_category`？]**
-   实测只有 2 个实体设置了分类：`sensor.distance` 为 `EntityCategory.DIAGNOSTIC`（`sensor.py:99`）、`number.color_gain_*` 为 `EntityCategory.CONFIG`（`number.py:322`）。而 30 个按钮（含"相机标定""重力传感器标定""生成标定图案"等工厂/实验性动作，`button.py:50-58`）**全部无分类**，会与日常实体混在同一分组；6 个配置开关则被显式置为 `None` 并附注释"用户可操作的开关，放常规分组"（`switch.py:60`）。这说明分类是逐项人工判断的，但判断标准未成文——`input_source`/`manual_zoom` 等标注"实验"的按钮与"心跳"类日常按钮在 UI 上无法区分。代码无法回答"实验性按钮是否该收进 DIAGNOSTIC"。
+2. **[待确认：22 个按钮与 11 个开关是否应设置 `entity_category`？]**
+   实测只有 2 个实体设置了分类：`sensor.distance` 为 `EntityCategory.DIAGNOSTIC`（`sensor.py:99`）、`number.color_gain_*` 为 `EntityCategory.CONFIG`（`number.py:322`）。而 22 个按钮**全部无分类**，会与日常实体混在同一分组；6 个配置开关则被显式置为 `None` 并附注释"用户可操作的开关，放常规分组"（`switch.py:60`）。这说明分类是逐项人工判断的，但判断标准未成文。注：未验证效果的按钮已在 0.0.3 中整体移除（见 `button.py:17-25` 的排除清单），因此"实验性按钮该不该收进 DIAGNOSTIC"这一争论已随实体删除而消失，剩余 22 个按钮均为真机验证过的动作。
 
 3. **[待确认：`_attr_has_entity_name = True` 与 `_attr_name` 同为配置条目名时，HA 实际渲染结果]**
    见上节"为什么 media_player 例外"末尾 —— 本环境无 `homeassistant` 包，无法实测 friendly_name 是否重复。
@@ -469,7 +466,7 @@ flowchart LR
 |名称|描述|请求方式|请求参数|返回参数|错误码|
 |-|-|-|-|-|-|
 |`async_setup_entry_media_player`|注册 1 个媒体播放器|平台转发|`hass, entry, add_entities`|None|注册失败由 HA 记日志|
-|`async_setup_entry_button`|注册 30 个按钮|平台转发|同上|None|同上|
+|`async_setup_entry_button`|注册 22 个按钮|平台转发|同上|None|同上|
 |`turn_on` / `turn_off`|电源切换|HA 服务|`entity_id`|None|`HomeAssistantError`（3 类文案）|
 |`volume_up` / `volume_down`|音量步进|HA 服务|`entity_id`|None|`HomeAssistantError`|
 |`volume_mute`|静音切换|HA 服务|`entity_id, is_volume_muted`|None|`HomeAssistantError`|
@@ -542,19 +539,19 @@ flowchart LR
 - **唯一 ID**：按上表四套约定择一，禁止发明第五套；`suffix` 必须与 `settings` 键、`translation_key` 三者同名（当前 15/15 个 setting 项全部满足）。
 - **实体属性**：所有可写实体都必须暴露 `raw_value`（`switch.py:100-102`、`select.py:99-102`、`number.py:135-140`, `:201-208`, `:274-280`, `:370-377`），让用户能对照机身菜单核对固件真值。
 - **错误文案**：中文、以动作开头、以 `: {err}` 收尾、`raise ... from err` 保留链。禁止 `except Exception`（现有 2 处是待偿债务）。
-- **注释即规格**：涉及固件语义的地方必须写明"第 N 轮确认 / 真机回环 / 实测值"，这是本项目的事实载体（如 `number.py:226-232`, `switch.py:252-258`）。
+- **注释即规格**：涉及固件语义的地方必须写明"第 N 轮确认 / 真机回环 / 实测值"，这是本项目的事实载体（如 `number.py:226-232`, `switch.py:149-157`）。
 - **死字段不要照抄**：全模块 **15 处** 都存了 `self._entry = entry`（`binary_sensor.py:40`、`button.py:118`、`media_player.py:66`、`number.py:89/168/247/334/423`、`select.py:128/186`、`sensor.py:43`、`switch.py:73/145/209/269`），而 `self._entry.` 的读取次数为 **0**；`Ef50ConfigSwitch`/`Ef50ConfigSelect` 存了 `_get_cmd`（`switch.py:75`, `select.py:71`）也从不使用。新增代码不应扩大这类复制。
 
 ### 设计哲学
 
 1. **"能读就回读，不能读就声明"**：状态诚实性优先于界面完整性。宁可让 7 个实体带 `assumed_state` 徽标，也不伪造一个看起来精确的值。
 2. **"幂等放在动作前"**：固件只提供 toggle，所以幂等不是命令属性而是调用方义务——电源先探测、静音先比对、设置先读三元组。
-3. **"一次轮询供全模块"**：58 个实体的读路径零 IO，把设备压力集中到唯一一条轮询链；代价是任何读值都带轮询间隔的陈旧度，且写后必须靠"回填 + 刷新"弥补。
+3. **"一次轮询供全模块"**：48 个实体的读路径零 IO，把设备压力集中到唯一一条轮询链；代价是任何读值都带轮询间隔的陈旧度，且写后必须靠"回填 + 刷新"弥补。
 
 ### 修改检查清单
 
 - [ ] 新增/改名实体的 `unique_id` 是否落在四套约定内？是否与既有 15 个 setting 后缀冲突？
-- [ ] `strings.json` + `translations/{en,zh-Hans}.json` 三处键集是否仍完全一致（当前 57 键）？
+- [ ] `strings.json` + `translations/{en,zh-Hans}.json` 三处键集是否仍完全一致（当前 47 键）？
 - [ ] 若删除了实体，`__init__.py` 的 `legacy` 表是否已覆盖（否则升级用户留下孤儿）？
 - [ ] 写路径是否走了 `api.py` 语义方法？若必须裸写，命令串是否引用了 `const.py` 常量而非字面量？
 - [ ] 写成功后是否同时回填 `coordinator.data` 与 `self._attr_*`？是否调用了 `async_request_refresh()`？

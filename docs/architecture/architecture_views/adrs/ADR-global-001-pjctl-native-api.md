@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-001
 description: "放弃 ADB 与 PJLink/ESC-VP21 路线，改用投影仪固件自带的 pjctl HTTP API（8080，Digest 认证）作为唯一控制通道；配置条目因此从 v1(ADB) 迁移到 v2(native)，且不再要求用户开启任何调试选项。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "选择固件原生 pjctl HTTP API 作为唯一控制通道"
 date: 2026-11-07

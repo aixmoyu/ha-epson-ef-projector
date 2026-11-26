@@ -2,8 +2,8 @@
 project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entity-platforms-001
-description: "实体层采用『乐观写 + 回填 coordinator.data + 可选刷新』而非『写完等回读再上屏』或『纯事件驱动』。因为它对全部 55 个可写实体统一适用，把 UI 响应压到一帧内，并把与固件真值的收敛责任交给既有的慢诊断轮——代价是无读通路的 7 个实体退化为本地记忆，且缓存成为可写共享状态。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+description: "实体层采用『乐观写 + 回填 coordinator.data + 可选刷新』而非『写完等回读再上屏』或『纯事件驱动』。因为它对全部 45 个可写实体统一适用，把 UI 响应压到一帧内，并把与固件真值的收敛责任交给既有的慢诊断轮——代价是无读通路的 7 个实体退化为本地记忆，且缓存成为可写共享状态。"
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "以乐观写 + 缓存回填作为实体写路径的统一模式"
 date: 2026-11-07
@@ -40,7 +40,7 @@ accepted（自 v3 起贯穿 7 个平台；无写回退记录）
 1. **交互响应性**（重要性：高）：写操作的视觉反馈必须在一帧内完成，否则用户会重复点击（对盲 toggle 类命令尤其危险）。
 2. **固件压力**（重要性：高）：单线程 HTTP 服务，额外请求会直接拉长其它请求的排队时间。
 3. **一致性可收敛**（重要性：中）：乐观值必须能被真值纠正，否则界面永久撒谎。
-4. **实现一致性**（重要性：中）：55 个可写实体若各写一套，维护成本不可控。
+4. **实现一致性**（重要性：中）：45 个可写实体若各写一套，维护成本不可控。
 5. **无读通路能力的可表达性**（重要性：中）：策略必须能覆盖"永远读不回来"的 7 个实体。
 
 ## 3. 候选方案（Considered Options）
@@ -69,12 +69,12 @@ accepted（自 v3 起贯穿 7 个平台；无写回退记录）
 1. 响应性：一帧内完成（`async_write_ha_state()`），满足 D1。
 2. 固件压力：写后不强制 GET，刷新请求交给协调器的既有节奏，满足 D2。
 3. 可收敛：慢轮 `merged.update(settings)`（`coordinator.py:116-119`）会用真值覆盖乐观值，满足 D3。
-4. 一致性：同一个模式复制到 55 个实体（`number.py:129-133`、`select.py:110-113`、`switch.py:109-111`、`select.py:160-164`、`number.py:216-220/297-301/392-396`），满足 D4。
+4. 一致性：同一个模式复制到 45 个实体（`number.py:129-133`、`select.py:102-105`、`switch.py:109-111`、`number.py:216-220/297-301/392-396`），满足 D4。
 5. 无读通路：Option A 的"本地记忆"分支天然覆盖（`switch.py:120-185` 等），满足 D5。Option B/C/D 在这一条上全部失效或代价过高。
 
 ### 4.1 实施要点
 
-- **回填位置必须与读属性一致**：`settings` 类写 `data["settings"][suffix]`，`diag` 类写 `data["diag"][key]`，电源写 `data["state"]`，启动模式写 `data["standby_mode"]`。
+- **回填位置必须与读属性一致**：`settings` 类写 `data["settings"][suffix]`，`diag` 类写 `data["diag"][key]`，电源写 `data["state"]`，启动模式实体已删除，`data["standby_mode"]` 现仅由 media_player 只读消费。
 - **双写而非单写**：缓存与 `self._attr_*` 都要改（`number.py:129-131`）。只改一处会被另一处覆盖。
 - **失败零副作用**：先 `await` 写命令，成功后才回填；异常路径直接 `raise HomeAssistantError(...) from err`。
 - **有读通路才刷新**：6 个 `Ef50ConfigSwitch`（`switch.py:104-111`）当前遗漏了 `async_request_refresh()`，属已知偏离（见 risk R-EP-14）。

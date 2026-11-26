@@ -1,7 +1,7 @@
 # ════════════════════════════════════════════════════════════════════════════
 # 全局功能树 — ha-epson-ef-projector
 # project: "ha-epson-ef-projector"
-# base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+# base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 #
 # 本文件是 5 个模块 function_tree.yml 的**业务视角合并结果**：
 #   entry-core / pjctl-transport / state-coordinator / entity-platforms /
@@ -18,7 +18,7 @@
 #   · 合并 M2「定位对焦马达至目标位置」：pjctl-transport 的 `goto_focus`
 #     （api.py:544-584）与 entity-platforms 的 `Ef50FocusNumber`（number.py:282-301）
 #     是同一业务能力的算法层与入口层 → 合并。
-#   · 合并 M3「注入遥控按键」：entity-platforms 的 30 个按钮（button.py:17-83）与
+#   · 合并 M3「注入遥控按键」：entity-platforms 的 22 个按钮（button.py:17-83）与
 #     media_player 的媒体键（media_player.py:201-228）、entry-core 的 `send_key`
 #     服务（services.py:43-54）三者共用 `NOTIFY_KEYEVENT` 通路（api.py:327-328），
 #     属于同一业务能力的不同入口 → 合并，入口差异降级为 function_point。
@@ -407,7 +407,7 @@
         spec: "`PLATFORMS` 7 项（`__init__.py:24-27`）；监听器只做 `async_reload`（`:209-210`）。"
         input: 已发布的 hass.data
         process: forward → register services → add listener
-        output: 58 实体 + 2 服务 + 监听
+        output: 48 实体 + 2 服务 + 监听
       - id: '2111'
         type: function_spec
         name: 装配顺序即契约
@@ -1355,7 +1355,7 @@
       - id: '8411'
         type: function_constraint
         name: 门禁不覆盖 HA 装配层
-        description: CI 不安装 homeassistant（`:18` 只装 aiohttp/ruff/pyflakes），7 个平台 + config_flow + services + 装配根在 CI 中零执行；历史 BLOCKER（5 元组解包崩溃使 58 实体全不可用）正是从此漏过。
+        description: CI 不安装 homeassistant（`:18` 只装 aiohttp/ruff/pyflakes），7 个平台 + config_flow + services + 装配根在 CI 中零执行；历史 BLOCKER（5 元组解包崩溃使 48 实体全不可用）正是从此漏过。
       - id: '8412'
         type: function_constraint
         name: 门禁不覆盖 tools

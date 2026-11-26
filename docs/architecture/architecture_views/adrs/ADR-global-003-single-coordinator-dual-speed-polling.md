@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-global-003
 description: "全集成只保留一个 DataUpdateCoordinator 作为唯一轮询源，采用快/慢双速：每轮只做 2 次 HTTP 探电源态，每 12 轮才追加约 33 条只读诊断与设置回读，读失败以 carry-forward 结转旧值。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "单一轮询源 + 快/慢双速轮询节流"
 date: 2026-11-07
@@ -20,7 +20,7 @@ accepted
 
 ## 1. 背景
 
-**业务背景**：58 个实体需要持续反映设备状态（电源、灯时、20 项诊断、10 项可写设置的当前值），而用户对电源状态变化的感知延迟要求最高（默认 15s 内）。
+**业务背景**：48 个实体需要持续反映设备状态（电源、灯时、20 项诊断、10 项可写设置的当前值），而用户对电源状态变化的感知延迟要求最高（默认 15s 内）。
 
 **技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（8080），且固件 NanoHTTPD 疑似单线程：行为记录表明某些查询会挂住整个服务（固件行为记录；生产代码注释亦承认"some commands hang the HTTP thread"，`api.py:340-346`）。设备无推送能力（`manifest.json:15` `iot_class=local_polling`）。
 
@@ -36,7 +36,7 @@ accepted
 
 1. **电源态时效**（高）：HA 的 `media_player` 状态是核心体验。
 2. **固件压力**（高）：单线程服务，一次卡死即全端口不可用（`risk.md` R-17）。
-3. **实体一致性**（中）：58 个实体必须共享同一份数据，不能各自轮询。
+3. **实体一致性**（中）：48 个实体必须共享同一份数据，不能各自轮询。
 
 ## 3. 候选方案
 
@@ -70,6 +70,6 @@ accepted
 
 ## 备注
 
-- **已知代价**：慢轮最坏 ≈33×10s ≈330s，远超默认 15s 间隔（`risk.md` R-09 给出总预算超时方案）。
+- **已知代价**：慢轮最坏 ≈32×10s ≈320s，远超默认 15s 间隔（`risk.md` R-09 给出总预算超时方案）。
 - **已知不一致**：`standby_mode` 与 `focus_position` 只在慢轮更新（`coordinator.py:113-115`, `:130`），因此实体写后调 `async_request_refresh()` 在快轮里"刷新了但值不变"——这是预期行为而非 bug，已在 `process_view.md` §5.4 的一致性差异表中记录。
 - 两次 `_async_update_data` 是否可能重叠属 HA 框架调度行为，本仓库无法验证（[待确认]）。

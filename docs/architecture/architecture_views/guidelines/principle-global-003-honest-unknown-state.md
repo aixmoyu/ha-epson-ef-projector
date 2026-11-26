@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-003
 description: "对固件不可读的状态，必须在实体上显式声明『这是假设值』（assumed_state + RestoreEntity + raw_value/stale 属性），绝不用本地记忆冒充设备真值；对可读状态，则必须暴露固件原始值供用户核对。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 架构
 principle_scope: global
 ---

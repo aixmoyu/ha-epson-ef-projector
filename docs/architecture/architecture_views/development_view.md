@@ -2,12 +2,12 @@
 project: "ha-epson-ef-projector"
 type: development-view
 description: "Home Assistant 自定义集成（custom_components/epson_ef，domain=epson_ef，v0.0.2），纯 Python 源码分发、无构建步骤、无包管理清单，依赖全部由 HA 运行时提供；测试为手工注册脚本 + unittest discover 的 4 文件套件，CI 仅跑 ruff(F,E9) 与 unittest。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 开发视图（源码结构与开发者视角）
 
-> 适用范围：`custom_components/epson_ef/`（14 个 .py，共 3 055 行）为唯一运行物；`tools/`（2 个脚本 + 1 个枚举清单）为真机排障与验收脚本；`tests/`（4 个 .py，共 1 020 行）为离线单测；`docs/architecture/` 为代码知识库。
+> 适用范围：`custom_components/epson_ef/`（14 个 .py，共 2 996 行）为唯一运行物；`tools/`（2 个脚本 + 1 个枚举清单）为真机排障与验收脚本；`tests/`（4 个 .py，共 1 145 行）为离线单测；`docs/architecture/` 为代码知识库。
 > 本视图与 logical_view §1 互补：本节只回答「谁构建出什么、源在哪、产物去哪、怎么验证」。
 
 ## 1. 源码仓库工程结构
@@ -56,7 +56,7 @@ ha-epson-ef-projector/                 # 仓库根 = HA 自定义集成仓库（
 | 构建 | **不存在**（无 setup.py/pyproject.toml/Makefile，`ls` 全部 No such file） | Python 源码直接分发；"构建"等价于把目录拷进 HA |
 | 部署（开发） | `rsync -av custom_components/epson_ef/ <user>@<ha主机>:<配置目录>/custom_components/epson_ef/` 后重启 HA（`README.md:131-135`） | 冒烟验证必须在真机/HA 实例 |
 | 部署（用户） | HACS 自定义存储库安装（`README.md:121-125`） | 最低 HA 2024.4.0（`hacs.json:3`、`README.md:129`） |
-| 测试 | `python3 -m pytest tests/ -q` → **64 passed，rc=0**（实测）；或 `python3 -m unittest discover -s tests -v` → **Ran 64 tests，OK，rc=0**（实测，与 CI 同款） | 二者等价，见 §3 |
+| 测试 | `python3 -m pytest tests/ -q` → **71 passed，rc=0**（实测）；或 `python3 -m unittest discover -s tests -v` → **Ran 64 tests，OK，rc=0**（实测，与 CI 同款） | 二者等价，见 §3 |
 | 测试（单文件直跑） | `python3 tests/test_api.py` → **Ran 42 tests**；`python3 tests/test_regressions.py` → **Ran 7 tests**（实测） | 两个文件的 `unittest.main()` 都不在文件末尾（`tests/test_api.py:507`、`tests/test_regressions.py:183`），其后定义的 4 个类（11 个用例）不会执行；**必须用 discover/pytest** |
 | 静态检查（CI 同款） | `ruff check custom_components tests --select F,E9` → **All checks passed!，rc=0**（实测） | 范围不含 `tools/`，规则仅 pyflakes 类 |
 | 静态检查（仓库全量，默认规则） | `ruff check .` → **All checks passed!**（实测） | 与 CI 同款命令结果一致 |
@@ -130,7 +130,7 @@ graph LR
 
 | 命令 | 真实输出 | 退出码 | 影响判定 |
 |-|-|-|-|
-| `python3 -m pytest tests/ -q` | `64 passed in 0.20s` | 0 | 可通过；但 `pytest` 未声明为依赖（无 requirements/CI 未装），本地能跑属环境自带 |
+| `python3 -m pytest tests/ -q` | `71 passed in 0.20s` | 0 | 可通过；但 `pytest` 未声明为依赖（无 requirements/CI 未装），本地能跑属环境自带 |
 | `python3 -m unittest discover -s tests -v` | `Ran 64 tests in 0.171s / OK` | 0 | 与 CI 一致，-green |
 | `python3 -m unittest tests.test_static -v` | `Ran 1 test / OK`（本机已装 pyflakes 4.1.0） | 0 | 若 CI/本地未装 pyflakes，此用例静默 skip 而非失败 |
 | `python3 tests/test_api.py` | `Ran 42 tests / OK` | 0 | 少跑 22 个用例：`main()` 位于 `tests/test_api.py:507`，其后 3 个类不执行 |
@@ -165,7 +165,7 @@ graph LR
 | ④ 写通路（改这里） | `number.py:282-301` | `async_set_native_value` → `api.goto_focus(target)`（`:290`），成功后回写 `settings["focus_position"]`（`:297`）并 `async_request_refresh()`（`:301`） |
 | ⑤ 算法本体 | `api.py:544-584` | 闭环：读 POS → 算剩余 → 定时 `focus_move_start` → `finally` 里必定 `focus_move_stop`（`api.py:575-582`）→ 轮询到容差内 |
 | ⑥ 已有测试护栏 | `tests/test_regressions.py:38-94`（闭环、取消时必发 OFF、常量 `FOCUS_STEP_UNIT==1`）、`tests/test_api.py:511-568`（`MAX/MIN/OFF` 载荷、收敛、POS 不可读返回 None） | 改算法前先读这两处，改完必须仍绿 |
-| ⑦ 验证 | `python3 -m pytest tests/ -q`（64 passed）；真机 `python tools/diagnose_state.py <IP>` 确认通路可用 | — |
+| ⑦ 验证 | `python3 -m pytest tests/ -q`（71 passed）；真机 `python tools/diagnose_state.py <IP>` 确认通路可用 | — |
 
 > 同一路径可套用到任何实体：`const.py` 表/常量 → 平台 `async_setup_entry` 枚举 → coordinator 读 → 实体 setter 写 → `api.py` 命令 → `tests/` 护栏。
 

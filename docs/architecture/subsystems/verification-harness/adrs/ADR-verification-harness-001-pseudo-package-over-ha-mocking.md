@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-001
 description: "在无 Home Assistant 的 CI 环境中验证生产代码，最终选择『伪包注入（只设 __path__ 的 ModuleType）+ AST 静态解析』，明确拒绝 mock HA 与安装 HA 两条路线。代价是 __init__.py 与 7 个平台模块零覆盖，收益是 64 用例 0.2s 跑完且不引入任何测试框架依赖。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "用伪包隔离代替 mock/安装 Home Assistant"
 date: 2026-11-01
@@ -23,7 +23,7 @@ accepted（自 3.10.0 之前确立，`tests/test_api.py` 的 docstring 已写明
 
 ## 1. 背景
 
-**业务背景**：这是一个单文件包分发的 HACS 自定义集成（`custom_components/epson_ef/`，14 模块 3055 行，58 实体）。维护者需要在**每次改协议细节后**都能快速确认没有破坏已固化的真机结论；同时仓库要能被外部贡献者在没有投影仪、没有 HA 的机器上 clone 后立即跑测试。
+**业务背景**：这是一个单文件包分发的 HACS 自定义集成（`custom_components/epson_ef/`，14 模块 2996 行，48 实体）。维护者需要在**每次改协议细节后**都能快速确认没有破坏已固化的真机结论；同时仓库要能被外部贡献者在没有投影仪、没有 HA 的机器上 clone 后立即跑测试。
 
 **技术背景**：
 

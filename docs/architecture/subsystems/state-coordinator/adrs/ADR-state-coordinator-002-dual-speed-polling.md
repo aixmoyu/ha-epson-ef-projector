@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-state-coordinator-002
 description: 采用单一 DataUpdateCoordinator 的快/慢双速轮询：每轮只 2 条 HTTP 探电源态，每 12 轮才追加 33 条只读命令（32 条在待机短路段内 + 1 条 standby_mode），稳态平均约 4.75 条/轮。代价是慢值最大陈旧 180s、慢轮峰值 35 条可能超出轮询间隔。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "单一轮询源 + 快/慢双速节流"
 date: 2026-11-07
@@ -21,7 +21,7 @@ accepted
 
 ## 1. 背景
 
-**业务背景**：58 个实体需要持续反映设备状态（电源、灯时、17 项诊断、10 项可写设置当前值），而用户对电源状态变化的感知延迟要求最高——`config_flow.py:63` 允许轮询间隔低至 5s，默认 15s（`const.py:11`）。
+**业务背景**：48 个实体需要持续反映设备状态（电源、灯时、17 项诊断、10 项可写设置当前值），而用户对电源状态变化的感知延迟要求最高——`config_flow.py:63` 允许轮询间隔低至 5s，默认 15s（`const.py:11`）。
 
 **技术背景**：设备只有一个 HTTP 端点 `/api/pjctl`（`API_PATH`，`const.py:14`），且固件是单线程 HTTP 服务——生产代码注释自承「some commands hang the HTTP thread」（`api.py:340-346`）。设备无推送能力（`manifest.json:15` 的 `"iot_class": "local_polling"`）。集成侧的唯一调度入口是 HA 的 `DataUpdateCoordinator`（`coordinator.py:19`, `:28-33`）。
 
@@ -38,7 +38,7 @@ accepted
 
 1. **电源态时效**（重要性：高）：`media_player` 的 `state` 是核心体验，且盲 toggle 依赖它判断当前态。
 2. **固件压力**（重要性：高）：单线程服务，一次挂起即 8080 全端口不可用（`docs/architecture/architecture_views/risk.md` R-17）。
-3. **实体一致性**（重要性：中）：58 个实体必须共享同一份数据，不能各自轮询。
+3. **实体一致性**（重要性：中）：48 个实体必须共享同一份数据，不能各自轮询。
 4. **实现复杂度**（重要性：中）：弱固件已经让调试困难，调度逻辑不应再引入复杂度。
 
 ## 3. 候选方案（Considered Options）

@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: "entry-core 是 HA 进程内集成的入口装配层：把一条 config entry 变成 api + coordinator + base_id 的共享运行时并发布到 hass.data，同时负责身份解析/注册表迁移/遗留实体清理、三条配置流、两个 domain 级服务与诊断导出。它不解析 pjctl 协议、不决定轮询读什么、不构造实体状态。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 id: entry-core
 ---
 

@@ -2,8 +2,8 @@
 project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-entity-platforms-001
-description: 实体层写动作必须经由 api.py 的语义方法，不得在平台文件里拼固件命令串。当前 40/55 个可写实体（button 30、switch 6、select 4）仍走 api.request(cmd, params) 裸接口，导致同一份协议知识存在两份编码：api.py 的语义方法与实体层的字符串字面量，二者会独立漂移。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+description: 实体层写动作必须经由 api.py 的语义方法，不得在平台文件里拼固件命令串。当前 31/45 个可写实体（button 22、switch 6、select 3）仍走 api.request(cmd, params) 裸接口，导致同一份协议知识存在两份编码：api.py 的语义方法与实体层的字符串字面量，二者会独立漂移。
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 架构
 principle_scope: module
 ---
@@ -14,7 +14,7 @@ principle_scope: module
 
 `api.py` 是唯一被授权"知道固件命令长什么样"的地方——它把 `CONFIG_SET_AMBIENT_LIGHT "3 1 48"` 这类参数拼装、`size` 语义、错误分类都封在 `EpsonApi` 里。但实体层有三处绕过了它，直接用 `coordinator.api.request(cmd, params)` 下发裸命令：
 
-- `button.py:138` —— 30 个按钮全部走裸串，命令与参数来自 `BUTTON_DEFS` 表（`button.py:17-83`）；
+- `button.py:138` —— 22 个按钮全部走裸串，命令与参数来自 `BUTTON_DEFS` 表（`button.py:17-83`）；
 - `switch.py:106` —— 6 个配置开关，命令来自 `WRITABLE_SWITCHES`（`const.py:53-66`）；
 - `select.py:107` —— 4 个档位选择器，命令来自 `WRITABLE_SELECTS`（`const.py:75-92`）。
 

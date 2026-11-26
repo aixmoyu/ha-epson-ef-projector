@@ -2,14 +2,14 @@
 project: "ha-epson-ef-projector"
 type: module-design
 description: state-coordinator 由「轮询编排」与「契约常量声明」两个子域组成：前者用快/慢双速把 2–35 条 HTTP 请求压进一个纯标量快照，并在读失败时结转旧值；后者用 4 张定宽元组表与 6 组值域常量，把固件契约从代码里剥离成可被多平台共同解包的数据。两者共同构成全集成唯一的状态上游。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 模块设计：state-coordinator（状态协调域）
 
 ## 模块定位与核心职责
 
-- **一句话定义**：把设备侧「无推送、弱固件、命令时灵时不灵」的现实，翻译成一份每轮全量重建、可被 58 个实体直接读取的 JSON 安全字典；同时把「能写什么、值域多少」固化成声明式契约。
+- **一句话定义**：把设备侧「无推送、弱固件、命令时灵时不灵」的现实，翻译成一份每轮全量重建、可被 48 个实体直接读取的 JSON 安全字典；同时把「能写什么、值域多少」固化成声明式契约。
 - **核心业务/技术能力**：
   1. **快/慢双速节流**：每轮固定探电源态，每 12 轮才追加 33 条只读命令（`coordinator.py:38-59`）。
   2. **读失败结转**：任何 `None` 结果都不入快照，由末尾 carry-forward 用上一轮值补齐（`coordinator.py:134-153`）。
@@ -52,7 +52,7 @@ graph TD
         T1["EpsonApi.probe_state / get_raw / get_*<br/>api.py"]
     end
     subgraph 上游 Entity
-        E1["7 个平台 58 实体<br/>只读 coordinator.data"]
+        E1["7 个平台 48 实体<br/>只读 coordinator.data"]
     end
     F1 --> O1
     O1 --> O2 --> T1
@@ -343,7 +343,7 @@ sequenceDiagram
 |`AMBIENT_LIGHT_SWITCHES`|4|—|4（`:45`）|—|✅|
 |`AMBIENT_MODE_OPTIONS`|2|—|—|`dict()`（`:187`）/ `[0]`（`:180`）|✅|
 
-**未被测试覆盖的表**：`tests/test_const_contract.py:27-32` 只登记了 4 张表（含 `button.py` 的 `BUTTON_DEFS`，宽度 5、30 行），**`AMBIENT_MODE_OPTIONS` 不在其中**——它靠 `dict()` 与列表推导消费，不产生元组解包 AST 节点，因此即使宽度漂移也不会被该测试捕获。见 risk.md R-SC-06。
+**未被测试覆盖的表**：`tests/test_const_contract.py:27-32` 只登记了 4 张表（含 `button.py` 的 `BUTTON_DEFS`，宽度 5、22 行），**`AMBIENT_MODE_OPTIONS` 不在其中**——它靠 `dict()` 与列表推导消费，不产生元组解包 AST 节点，因此即使宽度漂移也不会被该测试捕获。见 risk.md R-SC-06。
 
 ### 2.2 值域常量与固件实测的关系
 

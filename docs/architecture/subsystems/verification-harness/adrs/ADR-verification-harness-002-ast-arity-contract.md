@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-verification-harness-002
 description: "配置表的结构契约选择『AST 静态解析 + 双向宽度比对』，而不是运行时断言、类型系统约束或纯人工 review。契约锚定到文件级消费位置而非行号，并要求表必须有消费者以防死代码。这条决策直接来自 3.10.0 的全实体 unavailable 事故。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "用 AST 双向宽度比对锁定表-消费者契约"
 date: 2026-11-01
@@ -26,11 +26,11 @@ accepted（2026-11-01 事故后立即建立，测试有效性通过"注入 bug �
 
 - 待机时该分支被 `if state == "on"` 跳过，因此"装上能启动、待机看着正常"；
 - 一旦开机并到达诊断周期，每次轮询抛 `ValueError: too many values to unpack (expected 5, got 6)`；
-- coordinator 每轮失败 → **58 个实体全部 unavailable**。
+- coordinator 每轮失败 → **48 个实体全部 unavailable**。
 
 静态检查（当时只有 ruff F,E9）与既有单测都没抓到。真机部署后才暴露（`tests/test_const_contract.py` 的 docstring 有记录）。
 
-**技术背景**：4 张声明式元组表驱动 58 个实体中的大部分：
+**技术背景**：4 张声明式元组表驱动 48 个实体中的大部分：
 
 | 表 | 形状 | 消费者 |
 |-|-|-|

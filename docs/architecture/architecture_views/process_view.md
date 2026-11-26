@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: process-view
 description: "单一 HA 事件循环内三方协作：一个 DataUpdateCoordinator 定时轮询协程、7 个实体平台的嵌入式回调、以及被 HTTP 调用的固件 pjctl 服务（NanoHTTPD 单线程）。全部交互为 await 串行化的请求-响应，无消息总线；跨单元一致性靠「写后乐观改内存 + 慢速诊断轮询回读 + 无读通路项用 RestoreEntity/assumed_state」，全仓仅电源路径有一把 asyncio.Lock，其余写操作无并发保护。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 进程视图（跨单元运行时协作）
@@ -338,7 +338,7 @@ sequenceDiagram
                     API->>FW: POST
                     CO->>CO: await asyncio.sleep(0.2)
                 end
-                loop 6 个 switch + 4 个 select 回读 (coordinator.py:92-101)
+                loop 6 个 switch + 3 个 select 回读 (coordinator.py:92-101)
                     CO->>API: get_raw(get_cmd)
                     CO->>CO: await asyncio.sleep(0.2)
                 end
@@ -352,7 +352,7 @@ sequenceDiagram
         CO->>CO: carry-forward: product/standby_mode/light_*/diag/settings (coordinator.py:134-153)
         CO-->>E: 通知监听器 → 各实体重新渲染
     end
-    Note over CO,FW: 最坏一轮：33 次串行请求 × 10s ≈ 330s，<br/>远超 15s 间隔（见 §7 风险 R-01）
+    Note over CO,FW: 最坏一轮：32 次串行请求 × 10s ≈ 320s，<br/>远超 15s 间隔（见 §7 风险 R-01）
 ```
 
 **关键时序事实**
@@ -400,8 +400,7 @@ sequenceDiagram
 | `Ef50LightOutputNumber` | `settings.light_output` | 乐观写 + `async_request_refresh` + 诊断轮询回读 | `number.py:110-133` |
 | `Ef50RefreshTimerNumber` | `settings.refresh_timer` | 同上 | `number.py:189-220` |
 | `Ef50ColorGainNumber` ×3 | `diag.color_gain`（共享三元组） | 乐观写 + refresh；**三通道共享一条 GET**，写为"读-改-写整串" | `number.py:351-396`, `:370-377` |
-| `Ef50ConfigSelect` | `settings.<suffix>` | 乐观写 + refresh | `select.py:92-113` |
-| `Ef50StandbyModeSelect` | `coordinator.data["standby_mode"]`（**仅诊断周期更新**） | 乐观写 + refresh（refresh 的普通周期不改该键，故实际要等诊断周期） | `select.py:142-164`; `coordinator.py:130-132` |
+| `Ef50ConfigSelect` | `settings.<suffix>` | 乐观写 + refresh | `select.py:92-107` |
 | `Ef50ConfigSwitch` | `settings.<suffix>` | 乐观写，**不发 refresh** → 最迟等下一个诊断周期（≤12 轮 ≈180s） | `switch.py:90-111` |
 | `Ef50FocusNumber` | `settings.focus_position`（**仅诊断周期更新**） | 闭环回读 + 写回 settings + refresh | `number.py:262-301` |
 | `Ef50AmbientLightSwitch` ×3 / `Ef50AutoContrastSwitch` / `Ef50TestPatternSwitch` / `Ef50AmbientBrightnessNumber` / `Ef50AmbientModeSelect` / media_player 静音 | **无** | 仅本地记忆 + `assumed_state=True`（静音无 `assumed_state`，用 RestoreEntity） | `switch.py:158-179`, `:219-240`, `:279-300`; `number.py:433-458`; `select.py:197-219`; `media_player.py:75-81`, `:207-216` |
@@ -426,7 +425,7 @@ sequenceDiagram
 
 | ID | 风险 | 事实与证据 |
 |-|-|-|
-| R-01 | **单轮轮询可远超轮询间隔** | 诊断轮 33 次串行 HTTP（17 diag + 6 switch + 4 select + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode）各 10s 上限，且 `_async_update_data` 无聚合超时（`coordinator.py:59-132`）。最坏 ≈330s，而 `update_interval` 默认 15s（`const.py:11`）→ 慢周期内所有实体的 `async_request_refresh` 与下一轮定时全部排队 |
+| R-01 | **单轮轮询可远超轮询间隔** | 诊断轮 32 次串行 HTTP（17 diag + 6 switch + 4 select + light_output/refresh_timer/focus_range/focus_pos/product/standby_mode）各 10s 上限，且 `_async_update_data` 无聚合超时（`coordinator.py:59-132`）。最坏 ≈320s，而 `update_interval` 默认 15s（`const.py:11`）→ 慢周期内所有实体的 `async_request_refresh` 与下一轮定时全部排队 |
 | R-02 | **写操作无并发保护（除电源）** | 全仓仅 `media_player.py:73` 一把 `asyncio.Lock`；`number/switch/select/button/services` 的写路径均直接 `await api.request`（如 `number.py:126`, `switch.py:106`, `select.py:107`, `button.py:138`, `services.py:64`），无 `Semaphore`、无写队列 |
 | R-03 | **色彩增益"读-改-写"竞态** | 三通道共享一条 GET，写入是"取当前三元组→替换单通道→写整串"（`number.py:381-389`）。两个通道并发写会读到同基线，后写覆盖先写 → 丢一次修改。实体无锁（`number.py:379`） |
 | R-04 | **对焦无重入保护 + 与轮询争用固件** | `goto_focus` 循环内无锁（`api.py:561-583`），并发两次定位会交错 `MAX/MIN/OFF`；且 sleep 期间（最长 2.0s + 0.45s/轮）协调器可插进来发 33 条读命令（`coordinator.py:59`），而固件是单线程 NanoHTTPD（引擎查询挂起会阻塞整个服务） |

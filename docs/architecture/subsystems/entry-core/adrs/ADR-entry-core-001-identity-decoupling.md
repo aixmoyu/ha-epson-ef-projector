@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: adr
 id: ADR-entry-core-001
 description: "设备身份从『始终等于 host:port』改为『固件序列号优先、地址兜底』，并把身份持久化到 HA Store 而非 config entry。破除写 entry 触发 update listener 的 reload 循环，代价是多一份 .storage 文件与一套注册表迁移逻辑。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 status: accepted
 title: "设备身份与网络地址解耦，持久化到 Store"
 date: 2026-11-07

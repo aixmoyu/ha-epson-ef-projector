@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-verification-harness-002
 description: "凡是『导入即拉入 Home Assistant』或『只在特定运行时分支才抛错』的耦合，一律用 ast 静态解析去断言，而不是 import 后跑一遍。契约必须双向（定义侧宽度 ↔ 全部消费侧宽度）、必须覆盖两种语法形态（for 语句与推导式）、必须锚定消费位置。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 工程
 principle_scope: module
 ---
@@ -30,7 +30,7 @@ principle_scope: module
 
 ## 为什么要这样
 
-- **真实事故驱动**：`tests/test_const_contract.py:1-9` 记录了唯一一次 release-blocking 事故——`WRITABLE_SELECTS` 从 5 元组扩到 6 元组，`select.py` 同步改了，`coordinator.py:97` 漏改。静态检查（当时的 ruff F,E9）与既有单测**都没抓到**，因为待机时该分支不执行。真机部署后每次诊断轮询抛 `ValueError`，58 个实体全部 unavailable（`tests/test_const_contract.py` 的 docstring 有记录）。
+- **真实事故驱动**：`tests/test_const_contract.py:1-9` 记录了唯一一次 release-blocking 事故——`WRITABLE_SELECTS` 从 5 元组扩到 6 元组，`select.py` 同步改了，`coordinator.py:97` 漏改。静态检查（当时的 ruff F,E9）与既有单测**都没抓到**，因为待机时该分支不执行。真机部署后每次诊断轮询抛 `ValueError`，48 个实体全部 unavailable（`tests/test_const_contract.py` 的 docstring 有记录）。
 - **AST 比 import 更"抗环境"**：`test_const_contract.py` 的 `TABLE_SOURCES` 里 `BUTTON_DEFS` 定义在 `button.py`，而 `button.py` 有 7 处 `homeassistant` import——根本无法导入。AST 让它照样能被契约覆盖。
 - **有效性已被反证过**：测试有效性通过"注入 bug → 测试必须失败"的方式验证过。这是全项目唯一有记录的测试有效性验证。
 - **静态契约的成本是显式的**：它只看结构，不看语义。表里某列的**含义**（如 `WRITABLE_SELECTS` 第 5 列是 options、第 6 列是 labels）它不知道，因此"两列写反但宽度不变"是它抓不到的——这个缺口必须靠行为用例补。

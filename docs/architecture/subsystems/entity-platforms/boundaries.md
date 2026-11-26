@@ -2,7 +2,7 @@
 project: "ha-epson-ef-projector"
 type: boundaries
 description: entity-platforms 负责把 state-coordinator 产出的单一轮询快照投影成 58 个 Home Assistant 实体，并承载全部面向用户的写动作（电源/音量/媒体键/对焦/亮度/氛围灯/几何/按钮）。它不实现协议（不建连接、不算 Digest、不拼 size）、不装配轮询（不决定读什么、不决定慢轮次数）、不装配生命周期（不读 config entry、不注册平台、不做身份迁移），也不拥有 const.py 中声明式表的定义权（只消费）。
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 ---
 
 # 模块边界
@@ -11,7 +11,7 @@ base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 
 |维度|本领域负责|本领域不负责（属于其他领域）|
 |-|-|-|
-|核心职责|58 个实体对象的生命周期与状态投影；全部用户触发的写动作；写后乐观值回填；实体级错误翻译（`EpsonApiError` → `HomeAssistantError`）|HTTP/Digest/命令编码（`custom_components/epson_ef/api.py:1-656`）；轮询节奏与读数装配（`custom_components/epson_ef/coordinator.py:37-154`）；平台转发与身份解析（`custom_components/epson_ef/__init__.py:166-206`）|
+|核心职责|48 个实体对象的生命周期与状态投影；全部用户触发的写动作；写后乐观值回填；实体级错误翻译（`EpsonApiError` → `HomeAssistantError`）|HTTP/Digest/命令编码（`custom_components/epson_ef/api.py:1-656`）；轮询节奏与读数装配（`custom_components/epson_ef/coordinator.py:37-154`）；平台转发与身份解析（`custom_components/epson_ef/__init__.py:166-206`）|
 |数据所有权|`DeviceInfo`（设备聚合）；`unique_id` 后缀命名；实体翻译键与图标；`theme`-无关的展示属性（`raw_value`/`stale`/`measured_at`）|`coordinator.data` 七类键的**生产**与**结转**（`state`/`light_hours`/`light_extra`/`light_measured_at`/`settings`/`diag`/`product`/`standby_mode`，`coordinator.py:51-153`）；表定义（`const.py:53-142`）|
 |业务规则|幂等判定（先探测/先比对再发键）；写后回写协调器缓存；无读通路能力的诚实降级；模态化的可写性（哪些值域可下发）|固件命令语义与值域来源（`const.py`）；`size = params.split(" ")` 协议不变量（`api.py:160-171`）；电源态判定规则（`api.py:221-276`）|
 |装配方式|每平台一个 `async_setup_entry`，从 `hass.data[DOMAIN][entry_id]` 取 `coordinator` / `base_id` 两个依赖|平台列表声明（`__init__.py:24-27`）；`hass.data` 写入（`__init__.py:195-201`）|
@@ -22,7 +22,7 @@ base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
 ```mermaid
 graph LR
     subgraph 本模块 In-Scope
-        SELF["entity-platforms<br/>7 平台 / 58 实体"]
+        SELF["entity-platforms<br/>7 平台 / 48 实体"]
     end
     subgraph 上游依赖方 Upstream
         HA["HA 实体平台框架<br/>(platform / registry / state machine)"]

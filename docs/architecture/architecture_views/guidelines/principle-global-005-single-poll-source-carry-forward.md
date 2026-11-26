@@ -3,7 +3,7 @@ project: "ha-epson-ef-projector"
 type: development-principle
 id: principle-global-005
 description: "所有实体状态只有一个上游来源——Ef50Coordinator 的 data 字典；实体不得各自发起读请求。读失败时不得把键写成 None，而应省略该键并在轮询末尾用上一轮值结转（carry-forward），配合 stale 标记暴露陈旧性。"
-base_commit: 2ac3d734d748f9a524f168520baf21307fc7b42c
+base_commit: 620791f72da870960bea653d7dcc4fe75918fae9
 principle_category: 架构
 principle_scope: global
 ---
@@ -12,7 +12,7 @@ principle_scope: global
 
 ## 原则详细描述
 
-58 个实体没有任何一个自己发读请求取状态。所有读都在 `Ef50Coordinator._async_update_data` 里完成，写进一个 `dict[str, Any]`，实体通过 `CoordinatorEntity` 的 property 读它（`coordinator.py:37-154` 是唯一写入方）。
+48 个实体没有任何一个自己发读请求取状态。所有读都在 `Ef50Coordinator._async_update_data` 里完成，写进一个 `dict[str, Any]`，实体通过 `CoordinatorEntity` 的 property 读它（`coordinator.py:37-154` 是唯一写入方）。
 
 数据分为四组键（`coordinator.py:51-153`）：
 
@@ -28,7 +28,7 @@ principle_scope: global
 ## 为什么要这样
 
 1. **固件能力本就时有时无**：`CONFIG_GET_LIGHT_TIME` 待机时必然 FAIL（`api.py:330-338` docstring 明示），`CONFIG_GET_*` 系列在待机时大量 FAIL。如果读失败即置 `None`，每次关机都会把灯时传感器打成 unknown，历史曲线断档。
-2. **58 实体 × 独立轮询 = 请求风暴**：固件是单一 HTTP 端点（且疑似单线程），任何"每实体自己拉"的设计都会让请求量随实体数线性膨胀。单轮询源让成本恒定为 O(1) 请求族。
+2. **48 实体 × 独立轮询 = 请求风暴**：固件是单一 HTTP 端点（且疑似单线程），任何"每实体自己拉"的设计都会让请求量随实体数线性膨胀。单轮询源让成本恒定为 O(1) 请求族。
 3. **carry-forward 让"陈旧"可被表达而非被隐藏**：值保留，但配 `stale` 属性（`sensor.py:75-83` 判 `data.get("state") != "on"`），下游自动化可以据此 guard。这比"值消失"信息量更大。
 
 ## 适用范围
